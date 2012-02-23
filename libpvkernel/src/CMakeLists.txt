@@ -110,6 +110,7 @@ endif(PYTHONLIBS_FOUND)
 SET(FILTER_SRC_FILES
 filter/PVChunkFilter.cpp
 filter/PVChunkFilterByElt.cpp
+filter/PVChunkFilterByEltRestoreInvalid.cpp
 filter/PVChunkFilterByEltSaveInvalid.cpp
 filter/PVChunkFilterSource.cpp
 filter/PVChunkFilterCountElts.cpp
@@ -129,6 +130,7 @@ filter/PVPluginsLoad.cpp
 SET(FILTER_HEADER_FILES
 include/pvkernel/filter/PVChunkFilter.h
 include/pvkernel/filter/PVChunkFilterByElt.h
+include/pvkernel/filter/PVChunkFilterByEltRestoreInvalid.h
 include/pvkernel/filter/PVChunkFilterByEltSaveInvalid.h
 include/pvkernel/filter/PVChunkFilterSource.h
 include/pvkernel/filter/PVChunkFilterCountElts.h
