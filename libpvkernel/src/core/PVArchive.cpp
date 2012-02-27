@@ -212,10 +212,10 @@ bool PVCore::PVArchive::create_tarbz2(QString const& ar_path, QString const& dir
 
 	a = archive_write_new();
 	archive_write_set_format_ustar(a);
-	if (archive_write_set_compression_gzip(a) != ARCHIVE_OK) {
+	/*if (archive_write_set_compression_gzip(a) != ARCHIVE_OK) {
 		PVLOG_ERROR("Unable to use GZIP compression\n");
 		return false;
-	}
+	}*/
 	QByteArray ar_path_ba = ar_path.toLocal8Bit();
 	if (archive_write_open_filename(a, ar_path_ba.constData()) != ARCHIVE_OK) {
 		PVLOG_ERROR("Unable to open file %s: %s.\n", ar_path_ba.constData(), archive_error_string(a));
