@@ -40,7 +40,7 @@ protected:
 
 	// For PVPlotting
 	inline void set_uptodate() { _is_uptodate = true; }
-	inline void invalidate() { _is_uptodate = false; }
+	inline void invalidate() { /*_is_uptodate = false;*/ }
 
 public:
 	PVPlottingFilter::p_type get_plotting_filter();

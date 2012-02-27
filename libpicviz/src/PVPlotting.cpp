@@ -259,5 +259,9 @@ void Picviz::PVPlotting::set_uptodate_for_col(PVCol j)
 	return get_properties_for_col(j).set_uptodate();
 }	
 
-
-
+void Picviz::PVPlotting::validate_all()
+{
+	for (PVCol i = 0; i < _columns.size(); i++) {
+		get_properties_for_col(i).set_uptodate();
+	}
+}

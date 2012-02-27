@@ -78,7 +78,7 @@ protected:
 	void serialize(PVCore::PVSerializeObject &so, PVCore::PVSerializeArchive::version_t v);
 
 	// For PVMapped
-	inline void invalidate_column(PVCol j) { return _plotting.invalidate_column(j); }
+	inline void invalidate_column(PVCol j) { _plotting.invalidate_column(j); }
 
 	// For PVSource
 	void add_column(PVPlottingProperties const& props);

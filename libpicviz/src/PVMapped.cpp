@@ -159,11 +159,6 @@ PVLOG_INFO("(pvmapped::create_table) begin cuda mapping\n");
 		// passed through all mapping filters that have the same group and type
 		QHash<QString, PVCore::PVArgument> grp_values;
 		for (PVCol j = 0; j < ncols; j++) {
-			// Check that an update is required
-			if (_mapping.get_properties_for_col(j).is_uptodate()) {
-				continue;
-			}
-
 			// Get the corresponding object
 			PVRush::PVNraw::const_trans_nraw_table_line fields = nraw.get_col(j);
 			PVMappingFilter::p_type mapping_filter = mapping_filters[j];
@@ -175,34 +170,37 @@ PVLOG_INFO("(pvmapped::create_table) begin cuda mapping\n");
 				continue;
 			}
 
-			// Let's make our mapping
-			mapping_filter->set_dest_array(nrows, trans_table.getRowData(j));
-			//mapping_filter->set_axis(j, *get_format());
-			// Get the group specific value if relevant
-			QString group_key = _mapping.get_group_key_for_col(j);
-			if (!group_key.isEmpty()) {
-				PVCore::PVArgument& group_v = grp_values[group_key];
-				mapping_filter->set_group_value(group_v);
+			// Check that an update is required
+			if (!_mapping.get_properties_for_col(j).is_uptodate()) {
+				// Let's make our mapping
+				mapping_filter->set_dest_array(nrows, trans_table.getRowData(j));
+				//mapping_filter->set_axis(j, *get_format());
+				// Get the group specific value if relevant
+				QString group_key = _mapping.get_group_key_for_col(j);
+				if (!group_key.isEmpty()) {
+					PVCore::PVArgument& group_v = grp_values[group_key];
+					mapping_filter->set_group_value(group_v);
+				}
+				boost::this_thread::interruption_point();
+				tbb::tick_count tmap_start = tbb::tick_count::now();
+				mapping_filter->operator()(fields);
+				tbb::tick_count tmap_end = tbb::tick_count::now();
+				PVLOG_INFO("(PVMapped::create_table) parallel mapping for axis %d took %0.4f seconds.\n", j, (tmap_end-tmap_start).seconds());
 			}
-			boost::this_thread::interruption_point();
-			tbb::tick_count tmap_start = tbb::tick_count::now();
-			mapping_filter->operator()(fields);
-			tbb::tick_count tmap_end = tbb::tick_count::now();
-			PVLOG_INFO("(PVMapped::create_table) parallel mapping for axis %d took %0.4f seconds.\n", j, (tmap_end-tmap_start).seconds());
 
-			tmap_start = tbb::tick_count::now();
+			tbb::tick_count tmap_start = tbb::tick_count::now();
 			// Init the mandatory mapping
 			boost::this_thread::interruption_point();
 			for (it_pmf = mand_mapping_filters.begin(); it_pmf != mand_mapping_filters.end(); it_pmf++) {
 				(*it_pmf)->set_dest_params(params_map);
 				(*it_pmf)->operator()(Picviz::mandatory_param_list_values(&fields, trans_table.getRowData(j)));
 			}
-			tmap_end = tbb::tick_count::now();
+			tbb::tick_count tmap_end = tbb::tick_count::now();
 
 			PVLOG_INFO("(PVMapped::create_table) mandatory mapping for axis %d took %0.4f seconds.\n", j, (tmap_end-tmap_start).seconds());
 
 			_mapping.set_uptodate_for_col(j);
-			invalidate_plotted_children_column(j);
+			//invalidate_plotted_children_column(j);
 		}
 		PVLOG_INFO("(pvmapped::create_table) end parallel mapping\n");
 		tbb::tick_count tend = tbb::tick_count::now();
@@ -378,7 +376,7 @@ void Picviz::PVMapped::invalidate_plotted_children_column(PVCol j)
 	list_plotted_t::iterator it;
 	for (it = _plotteds.begin(); it != _plotteds.end(); it++) {
 		PVPlotted_p plotted = *it;
-		plotted->invalidate_column(j);
+		//plotted->invalidate_column(j);
 	}
 }
 
@@ -455,6 +453,7 @@ void Picviz::PVMapped::serialize(PVCore::PVSerializeObject& so, PVCore::PVSerial
 	}
 	so.list("plotted", _plotteds, "Plottings", (PVPlotted*) NULL, plotted_names, true, true);
 
+	
 	if (so.is_writing()) {
 		unsigned int size = trans_table.count();
 		so.attribute("data-size", size);

@@ -64,6 +64,9 @@ int PVPlotted::create_table()
 	_tmp_values.reserve(nrows);
 	float* p_tmp_v = &_tmp_values[0];
 	
+	if (_table.size() > 0) {
+		return 0;
+	}
 	_table.resize(mapped_col_count * nrows);
 	
 	tbb::tick_count tstart = tbb::tick_count::now();
@@ -117,7 +120,6 @@ int PVPlotted::create_table()
 				}
 #endif
 			}
-
 			_plotting.set_uptodate_for_col(j);
 		}
 		PVLOG_INFO("(PVPlotted::create_table) end parallel plotting\n");
@@ -583,6 +585,19 @@ void Picviz::PVPlotted::serialize(PVCore::PVSerializeObject& so, PVCore::PVSeria
 	so.object("view", _view, QObject::tr("View"));
 
 	so.list("expanded_sels", _expanded_sels, "Expanded selections", (ExpandedSelection*) NULL, QStringList(), true, true);
+
+	if (so.is_writing()) {
+		unsigned int size = _table.size();
+		so.attribute("data-size", size);
+		so.buffer("data", &_table[0], size*sizeof(float));
+	}
+	else {
+		unsigned int size = 0;
+		so.attribute("data-size", size);
+		_table.resize(size*sizeof(float));
+		so.buffer("data", &_table[0], size*sizeof(float));
+		_plotting.validate_all();
+	}
 }
 
 }

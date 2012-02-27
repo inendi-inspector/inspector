@@ -130,10 +130,10 @@ void Picviz::PVSource::wait_extract_end(PVRush::PVControllerJob_p job)
 void Picviz::PVSource::extract_finished()
 {
 	 // Set all mapped children as invalid
-	list_mapped_t::iterator it;
+	/*list_mapped_t::iterator it;
 	for (it = _mappeds.begin(); it != _mappeds.end(); it++) {
 		(*it)->invalidate_all();
-	}
+	}*/
 
 	// Reset all views and process the current one
 	list_views_t::iterator it_view;
