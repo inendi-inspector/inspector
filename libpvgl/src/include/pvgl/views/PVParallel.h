@@ -75,6 +75,8 @@ public: //FIXME!
 
 	int last_mouse_press_position_x;          //!<
 	int last_mouse_press_position_y;          //!<
+	int first_mouse_press_position_x;
+	int first_mouse_press_position_y;
 
 public:
 	/**

@@ -534,13 +534,13 @@ void PVGL::PVView::mouse_down(int button, int x, int y, int modifiers)
 		if (button == 2) {
 			/* We activate GRAB_MODE */
 			state_machine->set_grabbed(true);
-			lines.reset_offset();
+			//lines.reset_offset();
 		}
 		/* We test if we are in GRAB mode */
 		if (state_machine->is_grabbed()) {
 			/* We are in GRAB mode */
-			last_mouse_press_position_x = x;
-			last_mouse_press_position_y = y;
+			first_mouse_press_position_x = last_mouse_press_position_x = x;
+			first_mouse_press_position_y = last_mouse_press_position_y = y;
 
 			/* We are in SELECTION mode */
 		} else {
@@ -716,11 +716,7 @@ bool PVGL::PVView::mouse_up(int button, int x, int y, int modifiers)
 	if (button == 2) {
 		/* We deactivate GRAB_MODE */
 		state_machine->set_grabbed(false);
-		get_lines().reset_offset();
-		get_lines().set_main_fbo_dirty();
-		//map.set_lines_fbo_dirty();
-		get_lines().set_zombie_fbo_dirty();
-		//map.set_zombie_fbo_dirty();
+		get_lines().translate(x - first_mouse_press_position_x, y - first_mouse_press_position_y);
 	}
 	return true;
 }

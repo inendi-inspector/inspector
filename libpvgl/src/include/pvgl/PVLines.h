@@ -192,6 +192,7 @@ public:
   void create_batches();
   void fill_vbo_colors_and_zla(GLint start, GLsizei count);
   void fill_vbo_positions(unsigned int batch_index, GLuint start, GLsizei count);
+  void translate(int dx, int dy);
 };
 }
 #endif

@@ -911,3 +911,21 @@ void PVGL::PVLines::update_lpr()
 	}
 
 }
+
+/******************************************************************************
+ *
+ * PVGL::PVLines::translate
+ *
+ *****************************************************************************/
+void PVGL::PVLines::translate(int dx, int dy)
+{
+	if (abs(dx) > 300 || abs(dy) > 200 || main_fbo_dirty || lines_fbo_dirty || zombie_fbo_dirty) {
+		reset_offset();
+		set_main_fbo_dirty();
+		//map.set_lines_fbo_dirty();
+		set_zombie_fbo_dirty();
+		//map.set_zombie_fbo_dirty();
+	}
+
+}
+
