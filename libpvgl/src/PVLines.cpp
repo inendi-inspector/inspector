@@ -157,6 +157,8 @@ void PVGL::PVLines::reset_offset()
 	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
 
 	offset = vec2(0);
+	lines_offset = vec2(0);
+	zombie_offset = vec2(0);
 }
 
 /******************************************************************************
@@ -517,62 +519,6 @@ void PVGL::PVLines::set_zombie_fbo_dirty()
 
 /******************************************************************************
  *
- * PVGL::PVLines::draw_zombie_lines
- *
- *****************************************************************************/
-void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
-{
-	int nb_lines_to_draw = idle_manager.get_number_of_lines(view, IDLE_REDRAW_ZOMBIE_LINES);
-	// Note: nb_lines_to_draw is always less than lpr (the idle manager should force this.
-
-	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
-
-	if (!picviz_view->is_consistent()) {
-		return;
-	}
-	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo); PRINT_OPENGL_ERROR();
-	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
-	if (drawn_zombie_lines == 0) {
-		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
-		glClear(GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
-	}
-	if (nb_lines_to_draw == 0) {
-		return;
-	}
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_MAX);
-	PVRow lines_count = picviz_min(nb_lines_to_draw, int(picviz_view->get_row_count() - drawn_zombie_lines));
-	fill_vbo_colors_and_zla(drawn_zombie_lines, lines_count);
-	for (unsigned i = 0; i < nb_batches; i++) {
-		glUseProgram(batches[i].zombie_program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(batches[i].zombie_program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
-		glUniformMatrix4fv(get_uni_loc(batches[i].zombie_program, "view"), 1, GL_FALSE, modelview); PRINT_OPENGL_ERROR ();
-		glUniform1i(get_uni_loc(batches[i].zombie_program, "drawn_lines"), drawn_zombie_lines);
-		glBindVertexArray(batches[i].vao); PRINT_OPENGL_ERROR();
-		fill_vbo_positions(i, drawn_zombie_lines, lines_count);
-
-		// FIXME: this is probably overkill to do these 3 lines here, but I do have curious error if I remove them.
-		glActiveTexture(GL_TEXTURE2); PRINT_OPENGL_ERROR();
-		glBindTexture(GL_TEXTURE_BUFFER, tbo_zombie_texture); PRINT_OPENGL_ERROR();
-		glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_zombie); PRINT_OPENGL_ERROR();
-
-		glDrawArrays(GL_POINTS, 0, lines_count); PRINT_OPENGL_ERROR();
-	}
-	glBlendEquation(GL_FUNC_ADD); PRINT_OPENGL_ERROR();
-	glDisable(GL_BLEND);          PRINT_OPENGL_ERROR();
-	drawn_zombie_lines += nb_lines_to_draw;
-
-	PVLOG_DEBUG("PVGL::PVLines::%s: %d zombie lines drawn.\n", __FUNCTION__, drawn_zombie_lines);
-
-	if (drawn_zombie_lines >= int(picviz_view->get_row_count())) {
-		idle_manager.remove_task(view, IDLE_REDRAW_ZOMBIE_LINES);
-		zombie_fbo_dirty = false;
-		drawn_zombie_lines = 0;
-	}
-}
-
-/******************************************************************************
- *
  * PVGL::PVLines::fill_vbo_colors_and_zla
  *
  *****************************************************************************/
@@ -639,6 +585,63 @@ void PVGL::PVLines::fill_vbo_positions(unsigned int batch_index, GLuint start, G
 
 /******************************************************************************
  *
+ * PVGL::PVLines::draw_zombie_lines
+ *
+ *****************************************************************************/
+void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
+{
+	int nb_lines_to_draw = idle_manager.get_number_of_lines(view, IDLE_REDRAW_ZOMBIE_LINES);
+	// Note: nb_lines_to_draw is always less than lpr (the idle manager should force this.
+
+	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
+
+	if (!picviz_view->is_consistent()) {
+		return;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo); PRINT_OPENGL_ERROR();
+	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
+	if (drawn_zombie_lines == 0) {
+		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
+		glClear(GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
+	}
+	if (nb_lines_to_draw == 0) {
+		return;
+	}
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_MAX);
+	PVRow lines_count = picviz_min(nb_lines_to_draw, int(picviz_view->get_row_count() - drawn_zombie_lines));
+	fill_vbo_colors_and_zla(drawn_zombie_lines, lines_count);
+	for (unsigned i = 0; i < nb_batches; i++) {
+		glUseProgram(batches[i].zombie_program); PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(batches[i].zombie_program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
+		glUniformMatrix4fv(get_uni_loc(batches[i].zombie_program, "view"), 1, GL_FALSE, modelview); PRINT_OPENGL_ERROR ();
+		glUniform1i(get_uni_loc(batches[i].zombie_program, "drawn_lines"), drawn_zombie_lines);
+		glBindVertexArray(batches[i].vao); PRINT_OPENGL_ERROR();
+		fill_vbo_positions(i, drawn_zombie_lines, lines_count);
+
+		// FIXME: this is probably overkill to do these 3 lines here, but I do have curious error if I remove them.
+		glActiveTexture(GL_TEXTURE2); PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_BUFFER, tbo_zombie_texture); PRINT_OPENGL_ERROR();
+		glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_zombie); PRINT_OPENGL_ERROR();
+
+		glDrawArrays(GL_POINTS, 0, lines_count); PRINT_OPENGL_ERROR();
+	}
+	glBlendEquation(GL_FUNC_ADD); PRINT_OPENGL_ERROR();
+	glDisable(GL_BLEND);          PRINT_OPENGL_ERROR();
+	drawn_zombie_lines += nb_lines_to_draw;
+
+	PVLOG_DEBUG("PVGL::PVLines::%s: %d zombie lines drawn.\n", __FUNCTION__, drawn_zombie_lines);
+
+	if (drawn_zombie_lines >= int(picviz_view->get_row_count())) {
+		idle_manager.remove_task(view, IDLE_REDRAW_ZOMBIE_LINES);
+		zombie_fbo_dirty = false;
+		drawn_zombie_lines = 0;
+	}
+	zombie_offset = -offset;
+}
+
+/******************************************************************************
+ *
  * PVGL::PVLines::draw_selected_lines
  *
  *****************************************************************************/
@@ -685,6 +688,7 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 		lines_fbo_dirty = false;
 		drawn_lines = 0;
 	}
+	lines_offset = -offset;
 }
 
 /******************************************************************************
@@ -740,30 +744,30 @@ void PVGL::PVLines::draw()
 		glBindFramebuffer(GL_FRAMEBUFFER, main_fbo); PRINT_OPENGL_ERROR();
 
 		// Draw the zombie fbo into the main fbo
-		glActiveTexture(GL_TEXTURE0); PRINT_OPENGL_ERROR();
-		glEnable(GL_TEXTURE_RECTANGLE); PRINT_OPENGL_ERROR();
-		glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex); PRINT_OPENGL_ERROR();
-		glUseProgram(zombie_fbo_program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(zombie_fbo_program, "zoom"), 1, 1);
-		glUniform2f(get_uni_loc(zombie_fbo_program, "offset"), 0, 0); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(zombie_fbo_program, "size"), fbo_width, fbo_height); PRINT_OPENGL_ERROR();
-		glUniform1i(get_uni_loc(zombie_fbo_program, "draw_zombie"), state_machine->are_gl_zombie_visible()); PRINT_OPENGL_ERROR();
-		glUniform1i(get_uni_loc(zombie_fbo_program, "draw_unselected"), state_machine->are_gl_unselected_visible());PRINT_OPENGL_ERROR();
+		glActiveTexture(GL_TEXTURE0);                                                                                PRINT_OPENGL_ERROR();
+		glEnable(GL_TEXTURE_RECTANGLE);                                                                              PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex);                                                         PRINT_OPENGL_ERROR();
+		glUseProgram(zombie_fbo_program);                                                                            PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(zombie_fbo_program, "zoom"), 1, 1);                                                  PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(zombie_fbo_program, "offset"), zombie_offset.x, zombie_offset.y);                    PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(zombie_fbo_program, "size"), fbo_width, fbo_height);                                 PRINT_OPENGL_ERROR();
+		glUniform1i(get_uni_loc(zombie_fbo_program, "draw_zombie"), state_machine->are_gl_zombie_visible());         PRINT_OPENGL_ERROR();
+		glUniform1i(get_uni_loc(zombie_fbo_program, "draw_unselected"), state_machine->are_gl_unselected_visible()); PRINT_OPENGL_ERROR();
 		glBindVertexArray(fbo_vao); PRINT_OPENGL_ERROR();
 		glDrawArrays(GL_QUADS, 0, 4); PRINT_OPENGL_ERROR();
 
 		// Draw the "selected lines" into the main FBO
-		glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex); PRINT_OPENGL_ERROR();
-		glUseProgram(main_fbo_program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_program, "zoom"), 1, 1);
-		glUniform2f(get_uni_loc(main_fbo_program, "offset"), 0, 0); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_program, "size"), fbo_width, fbo_height); PRINT_OPENGL_ERROR();
-		glBindVertexArray(fbo_vao); PRINT_OPENGL_ERROR();
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDrawArrays(GL_QUADS, 0, 4); PRINT_OPENGL_ERROR();
-		glDisable(GL_BLEND);
-		glEnable(GL_DEPTH_TEST);
+		glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex);                                   PRINT_OPENGL_ERROR();
+		glUseProgram(main_fbo_program);                                                       PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(main_fbo_program, "zoom"), 1, 1);                             PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(main_fbo_program, "offset"), lines_offset.x, lines_offset.y); PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(main_fbo_program, "size"), fbo_width, fbo_height);            PRINT_OPENGL_ERROR();
+		glBindVertexArray(fbo_vao);                                                           PRINT_OPENGL_ERROR();
+		glEnable(GL_BLEND);                                                                   PRINT_OPENGL_ERROR();
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);                                    PRINT_OPENGL_ERROR();
+		glDrawArrays(GL_QUADS, 0, 4);                                                         PRINT_OPENGL_ERROR();
+		glDisable(GL_BLEND);                                                                  PRINT_OPENGL_ERROR();
+		glEnable(GL_DEPTH_TEST);                                                              PRINT_OPENGL_ERROR();
 
 		glColor3f(1.0f, 1.0f, 1.0f);
 		glLoadMatrixf(modelview);

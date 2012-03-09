@@ -34,6 +34,7 @@ struct vec2
 	vec2(float x_=0, float y_=0):x(x_),y(y_){}
 	vec2&operator+=(const vec2&v){x+=v.x;y+=v.y;return *this;}
 	vec2 operator-(const vec2&v)const{return vec2(x-v.x,y-v.y);}
+	vec2 operator-()const{return vec2(-x, -y);}
 };
 
 /**

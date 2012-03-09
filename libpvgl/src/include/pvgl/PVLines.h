@@ -22,8 +22,8 @@
 // FBO stuff:
 // - the zombie lines are drawn on their own fbo as needed (see zombie_fbo_dirty)
 // - the selected lines are drawn on their own fbo as needed (see be lines_fbo_dirty)
-// - these fbo are then copied to the main fbo
-// - the main fbo is displayed. 
+// - these fbo are then copied to the main fbo (see main_fbo_dirty)
+// - the main fbo is displayed on screen with an offset of @offset.
 namespace PVGL {
 class PVView;
 
@@ -64,7 +64,9 @@ class LibGLDecl PVLines {
 	int    fbo_width;    //!< The width of the PVGL view fbo (the width of the window plus a percentage), in pixel.
 	int	   fbo_height;   //!< The height of the PVGL view fbo (the height of the window plus a percentage), in pixel.
 
-	vec2   offset; //!< offset between the fbo and the display.
+	vec2   offset;          //!< offset between the fbo and the display.
+	vec2   lines_offset;    //!< offset between the lines fbo and the main fbo.
+	vec2   zombie_offset;   //!< offset between the zombie fbo and the main fbo.
 	/**
 	 *
 	 */
