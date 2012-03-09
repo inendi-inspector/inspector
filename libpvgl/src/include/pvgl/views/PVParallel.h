@@ -338,6 +338,8 @@ public:
 	void update_label_lpr();
 	void reinit_picviz_view();
 	void axes_toggle_show_limits() { axes.toggle_show_limits(); }
+	int get_axis_min();
+	int get_axis_max();
 };
 
 

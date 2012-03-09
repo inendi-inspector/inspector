@@ -26,7 +26,6 @@
 // 0: vec4 color (property)
 // 1: vec4 : z (in the x component)
 // 2-15: vec4 : ys
-// nb_indices = max_number_of_lines_in_view
 // size of the position array: sizeof(vec4)*((nb_axes+3)/4)*max_number_of_lines_in_view
 
 const int NB_ATTRIBUTES_PER_BATCH = 14;
@@ -60,10 +59,17 @@ PVGL::PVLines::PVLines(PVView *view_) : view(view_)
 	fbo_vao = 0;
 	main_fbo = 0;
 	main_fbo_tex = 0;
-	lines_fbo = 0;
-	lines_fbo_tex = 0;
-	zombie_fbo = 0;
-	zombie_fbo_tex = 0;
+	lines_fbo[0] = 0;
+	lines_fbo[1] = 0;
+	lines_fbo_tex[1] = 0;
+	lines_fbo_tex[0] = 0;
+	zombie_fbo[0] = 0;
+	zombie_fbo[1] = 0;
+	zombie_fbo_tex[0] = 0;
+	zombie_fbo_tex[1] = 0;
+
+	we_are_redrawing = false;
+	fbo_index = 0;
 }
 
 /******************************************************************************
@@ -121,21 +127,21 @@ void PVGL::PVLines::free_buffers()
 		glDeleteTextures(1, &main_fbo_tex);
 		main_fbo_tex = 0;
 	}
-	if (lines_fbo != 0) {
-		glDeleteFramebuffers(1, &lines_fbo);
-		lines_fbo = 0;
+	if (lines_fbo[0] != 0) {
+		glDeleteFramebuffers(2, lines_fbo);
+		lines_fbo[0] = 0;
 	}
-	if (lines_fbo_tex != 0) {
-		glDeleteTextures(1, &lines_fbo_tex);
-		lines_fbo_tex = 0;
+	if (lines_fbo_tex[0] != 0) {
+		glDeleteTextures(2, lines_fbo_tex);
+		lines_fbo_tex[0] = 0;
 	}
-	if (zombie_fbo != 0) {
-		glDeleteFramebuffers(1, &zombie_fbo);
-		zombie_fbo = 0;
+	if (zombie_fbo[0] != 0) {
+		glDeleteFramebuffers(2, zombie_fbo);
+		zombie_fbo[0] = 0;
 	}
-	if (zombie_fbo_tex != 0) {
-		glDeleteTextures(1, &zombie_fbo_tex);
-		zombie_fbo_tex = 0;
+	if (zombie_fbo_tex[0] != 0) {
+		glDeleteTextures(2, zombie_fbo_tex);
+		zombie_fbo_tex[0] = 0;
 	}
 
 	std::vector<Batch>::iterator it;
@@ -312,9 +318,11 @@ void PVGL::PVLines::init(Picviz::PVView_p pv_view_)
 	glBindTexture(GL_TEXTURE_BUFFER, tbo_zombie_texture);                                     PRINT_OPENGL_ERROR();
 	glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_zombie);                                     PRINT_OPENGL_ERROR();
 
-	glActiveTexture(GL_TEXTURE0); PRINT_OPENGL_ERROR();
+	glActiveTexture(GL_TEXTURE0);                                                             PRINT_OPENGL_ERROR();
 
 	create_batches();
+	axis_min = 0;
+	axis_max = picviz_view->get_axes_count() - 1;
 
 	// Init all the needed fbos
 	init_main_fbo();
@@ -322,8 +330,8 @@ void PVGL::PVLines::init(Picviz::PVView_p pv_view_)
 	init_zombie_fbo();
 
 	// Restore a sane state.
-	glBindVertexArray(0); PRINT_OPENGL_ERROR();
-	glUseProgram(0); PRINT_OPENGL_ERROR();
+	glBindVertexArray(0);                                                                     PRINT_OPENGL_ERROR();
+	glUseProgram(0);                                                                          PRINT_OPENGL_ERROR();
 }
 
 /******************************************************************************
@@ -355,7 +363,6 @@ void PVGL::PVLines::change_axes_count()
  *****************************************************************************/
 void PVGL::PVLines::init_main_fbo(void)
 {
-	std::vector<std::string> attributes;
 	GLfloat fbo_vertex_buffer[] = {
 		-1,-1, 0,0,
 		 1,-1, 1,0,
@@ -391,14 +398,8 @@ void PVGL::PVLines::init_main_fbo(void)
 	             fbo_vertex_buffer, GL_STATIC_DRAW); PRINT_OPENGL_ERROR();
 	glEnableVertexAttribArray(0); PRINT_OPENGL_ERROR();
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); PRINT_OPENGL_ERROR();
-	attributes.push_back("position");
 	glEnableVertexAttribArray(1); PRINT_OPENGL_ERROR();
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), BUFFER_OFFSET(2 * sizeof(GLfloat))); PRINT_OPENGL_ERROR();
-	attributes.push_back("tex_coord"); PRINT_OPENGL_ERROR();
-	main_fbo_program = read_shader("parallel/lines_fbo.vert", "", "parallel/lines_fbo.frag", "", "", "", attributes);
-	glUniform1i(get_uni_loc(main_fbo_program, "fbo_sampler"), 0); PRINT_OPENGL_ERROR();
-	main_fbo_axis_mode_program = read_shader("parallel/lines_fbo_axis_mode.vert", "", "parallel/lines_fbo_axis_mode.frag", "", "", "", attributes);
-	glUniform1i(get_uni_loc(main_fbo_axis_mode_program, "fbo_sampler"), 0); PRINT_OPENGL_ERROR();
 
 	set_main_fbo_dirty();
 }
@@ -411,27 +412,34 @@ void PVGL::PVLines::init_main_fbo(void)
 void PVGL::PVLines::init_lines_fbo(void)
 {
 	std::vector<std::string> attributes;
-	GLuint depth_rb;
-
 	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
 
-	glGenFramebuffers(1, &lines_fbo); PRINT_OPENGL_ERROR();
-	glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo); PRINT_OPENGL_ERROR();
-	glGenTextures(1, &lines_fbo_tex); PRINT_OPENGL_ERROR();
-	glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex); PRINT_OPENGL_ERROR();
-	glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
-	glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
-	glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0,
-	             GL_RGBA, GL_UNSIGNED_BYTE, 0); PRINT_OPENGL_ERROR();
-	glFramebufferTexture2D(GL_FRAMEBUFFER,
-	                       GL_COLOR_ATTACHMENT0,
-	                       GL_TEXTURE_RECTANGLE, lines_fbo_tex, 0); PRINT_OPENGL_ERROR();
-	glGenRenderbuffers(1, &depth_rb);
-	glBindRenderbuffer(GL_RENDERBUFFER, depth_rb);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, FBO_MAX_WIDTH, FBO_MAX_HEIGHT);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rb);
-	check_framebuffer_status();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0); PRINT_OPENGL_ERROR();
+	glGenFramebuffers(2, lines_fbo); PRINT_OPENGL_ERROR();
+	glGenTextures(2, lines_fbo_tex); PRINT_OPENGL_ERROR();
+	for (int i = 0; i < 2; i++) {
+		GLuint depth_rb;
+
+		glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo[i]);                                   PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex[i]);                             PRINT_OPENGL_ERROR();
+		glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST);          PRINT_OPENGL_ERROR();
+		glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST);          PRINT_OPENGL_ERROR();
+		glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0,
+				GL_RGBA, GL_UNSIGNED_BYTE, 0);                                             PRINT_OPENGL_ERROR();
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				GL_TEXTURE_RECTANGLE, lines_fbo_tex[i], 0);                                PRINT_OPENGL_ERROR();
+		glGenRenderbuffers(1, &depth_rb);                                                  PRINT_OPENGL_ERROR();
+		glBindRenderbuffer(GL_RENDERBUFFER, depth_rb);                                     PRINT_OPENGL_ERROR();
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, FBO_MAX_WIDTH, FBO_MAX_HEIGHT);  PRINT_OPENGL_ERROR();
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rb);    PRINT_OPENGL_ERROR();
+		check_framebuffer_status();
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);  PRINT_OPENGL_ERROR();
+	attributes.push_back("position");
+	attributes.push_back("tex_coord");
+	main_fbo_program = read_shader("parallel/lines_fbo.vert", "", "parallel/lines_fbo.frag", "", "", "", attributes);
+	glUniform1i(get_uni_loc(main_fbo_program, "fbo_sampler"), 0); PRINT_OPENGL_ERROR();
+	main_fbo_axis_mode_program = read_shader("parallel/lines_fbo_axis_mode.vert", "", "parallel/lines_fbo_axis_mode.frag", "", "", "", attributes);
+	glUniform1i(get_uni_loc(main_fbo_axis_mode_program, "fbo_sampler"), 0); PRINT_OPENGL_ERROR();
 }
 
 /******************************************************************************
@@ -445,18 +453,20 @@ void PVGL::PVLines::init_zombie_fbo(void)
 
 	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
 
-	glGenFramebuffers(1, &zombie_fbo);                                        PRINT_OPENGL_ERROR();
-	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo);                            PRINT_OPENGL_ERROR();
-	glGenTextures(1, &zombie_fbo_tex);                                        PRINT_OPENGL_ERROR();
-	glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex);                      PRINT_OPENGL_ERROR();
-	glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
-	glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
-	glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA,
-		   	FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);  PRINT_OPENGL_ERROR();
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		   	GL_TEXTURE_RECTANGLE, zombie_fbo_tex, 0);                         PRINT_OPENGL_ERROR();
-	check_framebuffer_status();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);                                     PRINT_OPENGL_ERROR();
+	glGenFramebuffers(2, zombie_fbo);                                             PRINT_OPENGL_ERROR();
+	glGenTextures(2, zombie_fbo_tex);                                             PRINT_OPENGL_ERROR();
+	for (int i = 0; i < 2; i++) {
+		glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo[i]);                         PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex[i]);                   PRINT_OPENGL_ERROR();
+		glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
+		glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST); PRINT_OPENGL_ERROR();
+		glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA,
+				FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);  PRINT_OPENGL_ERROR();
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				GL_TEXTURE_RECTANGLE, zombie_fbo_tex[i], 0);                      PRINT_OPENGL_ERROR();
+		check_framebuffer_status();
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);                                         PRINT_OPENGL_ERROR();
 
 	attributes.push_back("position");
 	attributes.push_back("tex_coord");
@@ -544,7 +554,7 @@ void PVGL::PVLines::fill_vbo_positions(unsigned int batch_index, GLuint start, G
 	glBufferData(GL_ARRAY_BUFFER, batches[batch_index].vbo_pos_alloc_size, NULL, GL_DYNAMIC_DRAW); PRINT_OPENGL_ERROR();
 	vec4* buffer = reinterpret_cast<vec4*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
 
-	PVRow nb_row = picviz_view->get_row_count();
+	//PVRow nb_row = picviz_view->get_row_count();
 	PVCol nb_col = picviz_view->get_axes_count();
 	PVCol plotted_col_size = picviz_view->get_original_axes_count();
 	const float* plotted_array = picviz_view->get_plotted_parent()->get_table_pointer();
@@ -598,7 +608,7 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
 	if (!picviz_view->is_consistent()) {
 		return;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo); PRINT_OPENGL_ERROR();
+	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo[fbo_index]); PRINT_OPENGL_ERROR();
 	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
 	if (drawn_zombie_lines == 0) {
 		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
@@ -649,6 +659,8 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 {
 	int nb_lines_to_draw = idle_manager.get_number_of_lines(view, IDLE_REDRAW_LINES);
 
+	// (**) test and see if we have a translation offset to handle (with some lines to redraw).
+
 	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
 
 	if (!picviz_view->is_consistent()) {
@@ -657,12 +669,15 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 	if (nb_lines_to_draw == 0) {
 		return;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo); PRINT_OPENGL_ERROR();
+	glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo[fbo_index]); PRINT_OPENGL_ERROR();
 	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
 	if (drawn_lines == 0) {
 		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
 		glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
+		// copy the "other" line fbo into a part of this one, if needed (we have an offset somewhere see **).
 	}
+
+	// "Regular" task, drawing all axis
 	PVRow lines_count = picviz_min(nb_lines_to_draw, PVRow(picviz_view->get_row_count() - drawn_lines));
 	fill_vbo_colors_and_zla(drawn_lines, lines_count);
 	for (unsigned int i = 0; i < nb_batches; i++) {
@@ -689,6 +704,8 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 		drawn_lines = 0;
 	}
 	lines_offset = -offset;
+
+	//
 }
 
 /******************************************************************************
@@ -746,7 +763,7 @@ void PVGL::PVLines::draw()
 		// Draw the zombie fbo into the main fbo
 		glActiveTexture(GL_TEXTURE0);                                                                                PRINT_OPENGL_ERROR();
 		glEnable(GL_TEXTURE_RECTANGLE);                                                                              PRINT_OPENGL_ERROR();
-		glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex);                                                         PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_RECTANGLE, zombie_fbo_tex[fbo_index]);                                              PRINT_OPENGL_ERROR();
 		glUseProgram(zombie_fbo_program);                                                                            PRINT_OPENGL_ERROR();
 		glUniform2f(get_uni_loc(zombie_fbo_program, "zoom"), 1, 1);                                                  PRINT_OPENGL_ERROR();
 		glUniform2f(get_uni_loc(zombie_fbo_program, "offset"), zombie_offset.x, zombie_offset.y);                    PRINT_OPENGL_ERROR();
@@ -757,7 +774,7 @@ void PVGL::PVLines::draw()
 		glDrawArrays(GL_QUADS, 0, 4); PRINT_OPENGL_ERROR();
 
 		// Draw the "selected lines" into the main FBO
-		glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex);                                   PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_RECTANGLE, lines_fbo_tex[fbo_index]);                        PRINT_OPENGL_ERROR();
 		glUseProgram(main_fbo_program);                                                       PRINT_OPENGL_ERROR();
 		glUniform2f(get_uni_loc(main_fbo_program, "zoom"), 1, 1);                             PRINT_OPENGL_ERROR();
 		glUniform2f(get_uni_loc(main_fbo_program, "offset"), lines_offset.x, lines_offset.y); PRINT_OPENGL_ERROR();
@@ -944,15 +961,41 @@ void PVGL::PVLines::update_lpr()
  * PVGL::PVLines::translate
  *
  *****************************************************************************/
-void PVGL::PVLines::translate(int dx, int dy)
+void PVGL::PVLines::translate(int /*dx*/, int dy)
 {
-	if (abs(dx) > 300 || abs(dy) > 200 || main_fbo_dirty || lines_fbo_dirty || zombie_fbo_dirty) {
+    int new_axis_min;
+	int new_axis_max;
+
+	new_axis_min = view->get_axis_min();
+	new_axis_max = view->get_axis_max();
+	PVLOG_INFO("PVGL::PVLines::translate: new_axis_min: %d (was %d), new_axis_max: %d (was %d)\n", new_axis_min, axis_min, new_axis_max, axis_max);
+	if (abs(dy) > 200 || main_fbo_dirty || lines_fbo_dirty || zombie_fbo_dirty) {
 		reset_offset();
 		set_lines_fbo_dirty();
 		//map.set_lines_fbo_dirty();
 		set_zombie_fbo_dirty();
 		//map.set_zombie_fbo_dirty();
-	}
+	} else {
+		if (new_axis_min < axis_min) {
+			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the left (from %d to %d)\n", axis_min - new_axis_min, new_axis_min, axis_min);
+			// Copying the current zombie frame buffer to the spare zombie framebuffer (we could use the same spare fbo, not to waste memory)
+/*			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, spare_zombie_fbo);       PRINT_OPENGL_ERROR();
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, zombie_fbo);             PRINT_OPENGL_ERROR();
+            glClearColor(0.0, 0.0, 0.0, 0.0);                               PRINT_OPENGL_ERROR();
+            glClear(GL_COLOR_BUFFER_BIT);                                   PRINT_OPENGL_ERROR();
+			glBlitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+*/
+			// Copying back the spare zombie frame buffer to the current zombie framebuffer (note: we could probably optimize this by swapping _fbo handles)
+			// Draw all the zombie lines between new_axis_min and axis_min in the zombie fbo (no idle manager for now, I'm ont even sure it can be done)
+			// Do the same for the real lines.
+			// zombie and line fbo are known to be undirty, but the main fbo is known to be dirty.
+		}
+		if (new_axis_max > axis_max) {
+			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the right (from %d to %d)\n", new_axis_max - axis_max, axis_max, new_axis_max);
 
+		}
+	}
+	axis_min = new_axis_min;
+	axis_max = new_axis_max;
 }
 

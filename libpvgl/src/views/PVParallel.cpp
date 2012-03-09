@@ -1031,7 +1031,40 @@ void PVGL::PVView::special_keys(int key, int, int)
 					}
 					update_label_lpr();
 					break;
+			case GLUT_KEY_F2: // DEBUG display only
+					{
+						vec2 axes_pos_min, axes_pos_max;
+						axes_pos_min = screen_to_plotted(vec2(-get_width() * PVGL_VIEW_OUTSIDE_HORIZONTAL_BORDER / 100.0,0));
+						axes_pos_max = screen_to_plotted(vec2(get_width() * (1.0 + PVGL_VIEW_OUTSIDE_HORIZONTAL_BORDER / 100.0),0));
+						PVLOG_INFO("PVGL::PVView::%s: axe min: %f, axe max: %f\n", __FUNCTION__, axes_pos_min.x, axes_pos_max.x);
+
+
+
+					}
+					break;
 		}
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVView::get_axis_min
+ *
+ *****************************************************************************/
+int PVGL::PVView::get_axis_min()
+{
+  vec2 pos_min = screen_to_plotted(vec2(-get_width() * PVGL_VIEW_OUTSIDE_HORIZONTAL_BORDER / 100.0,0));
+  return picviz_max(0, pos_min.x);
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVView::get_axis_max
+ *
+ *****************************************************************************/
+int PVGL::PVView::get_axis_max()
+{
+  vec2 pos_max = screen_to_plotted(vec2(get_width() * (1.0 + PVGL_VIEW_OUTSIDE_HORIZONTAL_BORDER / 100.0),0));
+  return picviz_min(pos_max.x, picviz_view->get_axes_count() - 1);
 }
 
 /******************************************************************************

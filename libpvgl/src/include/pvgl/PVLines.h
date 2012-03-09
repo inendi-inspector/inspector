@@ -67,15 +67,20 @@ class LibGLDecl PVLines {
 	vec2   offset;          //!< offset between the fbo and the display.
 	vec2   lines_offset;    //!< offset between the lines fbo and the main fbo.
 	vec2   zombie_offset;   //!< offset between the zombie fbo and the main fbo.
+	int    axis_min;        //!< index of the first axis drawn in the main fbo.
+	int    axis_max;        //!< index of the last axis drawn in the main fbo.
 	/**
 	 *
 	 */
 	void   init_main_fbo();
 
 	// Selected lines FBO
-	bool   lines_fbo_dirty; //!< Indicator: toggled to true when some selected lines are to be redrawn in their fbo.
-	GLuint lines_fbo;       //!<
-	GLuint lines_fbo_tex;   //!<
+	bool   we_are_redrawing;
+	int    fbo_index;        //!< 0 or 1, telling which fbo is shown (the old one), which fbo is written to (the current one).
+
+	bool   lines_fbo_dirty;    //!< Indicator: toggled to true when some selected lines are to be redrawn in their fbo.
+	GLuint lines_fbo[2];       //!<
+	GLuint lines_fbo_tex[2];   //!<
 	/**
 	 *
 	 */
@@ -83,8 +88,8 @@ class LibGLDecl PVLines {
 
 	// FBO for zombie/non-zombie lines
 	bool   zombie_fbo_dirty;   //!< A flag indicating if we should redraw the zombie fbo content.
-	GLuint zombie_fbo;         //!<
-	GLuint zombie_fbo_tex;     //!<
+	GLuint zombie_fbo[2];         //!<
+	GLuint zombie_fbo_tex[2];     //!<
 	GLuint tbo_zombie;         //!< The Texture buffer object containing the currently zombie/unzombie lines selection (the one from the "layer stack output" layer).
 	GLuint tbo_zombie_texture; //!< The texture object attached to the #tbo_zombie.
 	GLuint zombie_fbo_program; //!<
