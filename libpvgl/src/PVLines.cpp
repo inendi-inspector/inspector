@@ -22,7 +22,7 @@
 
 #include <pvgl/PVLines.h>
 
-// attrib list:
+// attribute list:
 // 0: vec4 color (property)
 // 1: vec4 : z (in the x component)
 // 2-15: vec4 : ys
@@ -184,6 +184,7 @@ void PVGL::PVLines::set_size(int width, int height)
 	fbo_height= height* fbo_height_factor;
 
 	set_main_fbo_dirty();
+	set_lines_fbo_dirty();
 	set_zombie_fbo_dirty();
 	reset_offset();
 }
@@ -263,12 +264,12 @@ void PVGL::PVLines::create_batches()
 		PVLOG_DEBUG("PVGL::PVLines::%s, Prefix: %s.\n", __FUNCTION__, prefix_stream.str().c_str());
 		batch.program = read_shader("parallel/lines.vert", "parallel/lines.geom", "parallel/lines.frag",
 		                            prefix_stream.str(), prefix_stream.str(), "", attributes);
-		glUniform1f(get_uni_loc(batch.program, "batch"), k); PRINT_OPENGL_ERROR();
+		glUniform1f(get_uni_loc(batch.program, "index_axe"), k*55.0); PRINT_OPENGL_ERROR();
 		glUniform1i(get_uni_loc(batch.program, "selection_sampler"), 1); PRINT_OPENGL_ERROR();
 
 		batch.zombie_program = read_shader("parallel/lines_zombie.vert", "parallel/lines_zombie.geom", "parallel/lines_zombie.frag",
 		                                   prefix_stream.str(), prefix_stream.str(), "", attributes);
-		glUniform1f(get_uni_loc(batch.zombie_program, "batch"), k); PRINT_OPENGL_ERROR();
+		glUniform1f(get_uni_loc(batch.zombie_program, "index_axe"), k * 55.0); PRINT_OPENGL_ERROR();
 		glUniform1i(get_uni_loc(batch.zombie_program, "zombie_sampler"), 2); PRINT_OPENGL_ERROR();
 
 		batches.push_back(batch);
@@ -476,8 +477,24 @@ void PVGL::PVLines::set_main_fbo_dirty()
 		return;
 	}
 	main_fbo_dirty = true;
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVLines::set_lines_fbo_dirty
+ *
+ *****************************************************************************/
+void PVGL::PVLines::set_lines_fbo_dirty()
+{
+	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
+
+	if (!picviz_view->is_consistent()) {
+		return;
+	}
+	lines_fbo_dirty = true;
 	drawn_lines = 0;
 	idle_manager.new_task(view, IDLE_REDRAW_LINES);
+	set_main_fbo_dirty();
 }
 
 /******************************************************************************
@@ -495,6 +512,7 @@ void PVGL::PVLines::set_zombie_fbo_dirty()
 	zombie_fbo_dirty = true;
 	drawn_zombie_lines = 0;
 	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES);
+	set_main_fbo_dirty();
 }
 
 /******************************************************************************
@@ -567,6 +585,7 @@ void PVGL::PVLines::fill_vbo_colors_and_zla(GLint start, GLsizei count)
   glBufferData(GL_ARRAY_BUFFER, count * sizeof(ubvec4), NULL, GL_DYNAMIC_DRAW); PRINT_OPENGL_ERROR();
   glBufferData(GL_ARRAY_BUFFER, count * sizeof(ubvec4), &picviz_view->post_filter_layer.get_lines_properties().table.at(start), GL_DYNAMIC_DRAW); PRINT_OPENGL_ERROR();
 }
+
 
 /******************************************************************************
  *
@@ -663,7 +682,7 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 	drawn_lines += nb_lines_to_draw;
 	if (drawn_lines >= int(picviz_view->get_row_count())) {
 		idle_manager.remove_task(view, IDLE_REDRAW_LINES);
-		main_fbo_dirty = false;
+		lines_fbo_dirty = false;
 		drawn_lines = 0;
 	}
 }
@@ -682,7 +701,7 @@ void PVGL::PVLines::draw()
 	if (!picviz_view->is_consistent()) {
 		return;
 	}
-	if (main_fbo_dirty || zombie_fbo_dirty) { // We need to redraw the lines into the framebuffer.
+	if (main_fbo_dirty || lines_fbo_dirty || zombie_fbo_dirty) { // We need to redraw the lines into the framebuffer.
 		GLfloat modelview[16];
 		// Setup the Antialiasing stuff.
 		if (state_machine->is_antialiased()) {
@@ -704,13 +723,13 @@ void PVGL::PVLines::draw()
 
 		glGetFloatv(GL_MODELVIEW_MATRIX, modelview); PRINT_OPENGL_ERROR();
 
-		// Draw the zombie/non-zombie lines into their own FBO
 		if (!state_machine->is_grabbed() /* && disabled for now !view->get_map().is_panning()*/) {
+			// Draw the zombie/non-zombie lines into their own FBO
 			if (zombie_fbo_dirty && (state_machine->are_gl_zombie_visible() || state_machine->are_gl_unselected_visible())) {
 				draw_zombie_lines(modelview);
 			}
 			// Draw the selected lines into their own FBO
-			if (main_fbo_dirty) {
+			if (lines_fbo_dirty) {
 				draw_selected_lines(modelview);
 			}
 		}
@@ -749,34 +768,39 @@ void PVGL::PVLines::draw()
 		glColor3f(1.0f, 1.0f, 1.0f);
 		glLoadMatrixf(modelview);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0); PRINT_OPENGL_ERROR();
+
+		if (!lines_fbo_dirty && !zombie_fbo_dirty) {
+			main_fbo_dirty = false; // XXX we could put the axes & names into this fbo too, we will have to change this.
+		}
 	}
 
 	// Draw the main FBO on the screen.
 	glViewport(0, 0, view->get_width(), view->get_height()); PRINT_OPENGL_ERROR();
-	glActiveTexture(GL_TEXTURE0); PRINT_OPENGL_ERROR();
-	glEnable(GL_TEXTURE_RECTANGLE); PRINT_OPENGL_ERROR();
-	glBindTexture(GL_TEXTURE_RECTANGLE, main_fbo_tex); PRINT_OPENGL_ERROR();
+	glActiveTexture(GL_TEXTURE0);                            PRINT_OPENGL_ERROR();
+	glEnable(GL_TEXTURE_RECTANGLE);                          PRINT_OPENGL_ERROR();
+	glBindTexture(GL_TEXTURE_RECTANGLE, main_fbo_tex);       PRINT_OPENGL_ERROR();
+
+	GLuint fbo_program;
 	if (state_machine->is_axes_mode()) {
-		glUseProgram(main_fbo_axis_mode_program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_axis_mode_program, "zoom"), fbo_width_factor, fbo_height_factor);
-		glUniform2f(get_uni_loc(main_fbo_axis_mode_program, "offset"), offset.x, offset.y); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_axis_mode_program, "size"), fbo_width, fbo_height); PRINT_OPENGL_ERROR();
+		fbo_program = main_fbo_axis_mode_program;
 	} else {
-		glUseProgram(main_fbo_program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_program, "zoom"), fbo_width_factor, fbo_height_factor);
-		glUniform2f(get_uni_loc(main_fbo_program, "offset"), offset.x, offset.y); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(main_fbo_program, "size"), fbo_width, fbo_height); PRINT_OPENGL_ERROR();
+		fbo_program = main_fbo_program;
 	}
-	glBindVertexArray(fbo_vao); PRINT_OPENGL_ERROR();
+	glUseProgram(fbo_program);                                                          PRINT_OPENGL_ERROR();
+	glUniform2f(get_uni_loc(fbo_program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
+	glUniform2f(get_uni_loc(fbo_program, "offset"), offset.x, offset.y);                PRINT_OPENGL_ERROR();
+	glUniform2f(get_uni_loc(fbo_program, "size"), fbo_width, fbo_height);               PRINT_OPENGL_ERROR();
+
+	glBindVertexArray(fbo_vao);   PRINT_OPENGL_ERROR();
 	glDrawArrays(GL_QUADS, 0, 4); PRINT_OPENGL_ERROR();
 
 	// Restore a known OpenGL state.
-	glDisable(GL_BLEND); PRINT_OPENGL_ERROR();
-	glDisable(GL_TEXTURE_RECTANGLE); PRINT_OPENGL_ERROR();
-	glUseProgram(0); PRINT_OPENGL_ERROR();
-	glBindVertexArray(0); PRINT_OPENGL_ERROR();
+	glDisable(GL_BLEND);                                     PRINT_OPENGL_ERROR();
+	glDisable(GL_TEXTURE_RECTANGLE);                         PRINT_OPENGL_ERROR();
+	glUseProgram(0);                                         PRINT_OPENGL_ERROR();
+	glBindVertexArray(0);                                    PRINT_OPENGL_ERROR();
 	glViewport(0, 0, view->get_width(), view->get_height()); PRINT_OPENGL_ERROR();
-	glEnable(GL_DEPTH_TEST); PRINT_OPENGL_ERROR();
+	glEnable(GL_DEPTH_TEST);                                 PRINT_OPENGL_ERROR();
 }
 
 /******************************************************************************
@@ -793,7 +817,7 @@ void PVGL::PVLines::update_arrays_z(void)
 	if (!picviz_view->is_consistent()) {
 		return;
 	}
-	set_main_fbo_dirty();
+	set_lines_fbo_dirty();
 }
 
 /******************************************************************************
@@ -810,7 +834,7 @@ void PVGL::PVLines::update_arrays_colors(void)
 	if (!picviz_view->is_consistent()) {
 		return;
 	}
-	set_main_fbo_dirty();
+	set_lines_fbo_dirty();
 	set_zombie_fbo_dirty();
 }
 
@@ -833,8 +857,7 @@ void PVGL::PVLines::update_arrays_selection(void)
 	                picviz_view->post_filter_layer.get_selection().get_buffer()); PRINT_OPENGL_ERROR();
 
 	view->update_label_lines_selected_eventline();
-	set_main_fbo_dirty();
-	//update_arrays_colors(); // FIXME: Is this needed or not arfer all?
+	set_lines_fbo_dirty();
 }
 
 /******************************************************************************
@@ -854,7 +877,7 @@ void PVGL::PVLines::update_arrays_zombies(void)
 	glBufferSubData(GL_TEXTURE_BUFFER, 0, PICVIZ_SELECTION_NUMBER_OF_BYTES,
 		   	picviz_view->layer_stack_output_layer.get_selection().get_buffer()); PRINT_OPENGL_ERROR();
 
-	set_main_fbo_dirty();
+	set_lines_fbo_dirty();
 	set_zombie_fbo_dirty();
 }
 
@@ -870,7 +893,7 @@ void PVGL::PVLines::update_arrays_positions(void)
 	if (!picviz_view->is_consistent() || !picviz_view->axes_combination.is_consistent()) {
 		return;
 	}
-	set_main_fbo_dirty();
+	set_lines_fbo_dirty();
 	set_zombie_fbo_dirty();
 }
 
@@ -921,7 +944,7 @@ void PVGL::PVLines::translate(int dx, int dy)
 {
 	if (abs(dx) > 300 || abs(dy) > 200 || main_fbo_dirty || lines_fbo_dirty || zombie_fbo_dirty) {
 		reset_offset();
-		set_main_fbo_dirty();
+		set_lines_fbo_dirty();
 		//map.set_lines_fbo_dirty();
 		set_zombie_fbo_dirty();
 		//map.set_zombie_fbo_dirty();

@@ -12,7 +12,6 @@
 #define GLEW_STATIC 1
 #include <GL/glew.h>
 #include <GL/freeglut.h>
-
 #include <pvkernel/core/general.h>
 
 #include <picviz/PVView.h>
@@ -20,7 +19,11 @@
 #include <pvgl/PVMap.h>
 
 
-
+// FBO stuff:
+// - the zombie lines are drawn on their own fbo as needed (see zombie_fbo_dirty)
+// - the selected lines are drawn on their own fbo as needed (see be lines_fbo_dirty)
+// - these fbo are then copied to the main fbo
+// - the main fbo is displayed. 
 namespace PVGL {
 class PVView;
 
@@ -34,9 +37,9 @@ class LibGLDecl PVLines {
 	struct Batch {
 		GLuint vao;                         //!< The Vertex Array Object for this batch.
 		GLuint vbo_position;                //!< The vbo containing all the y coordinates for this batch.
+		GLuint vbo_pos_alloc_size;          //!< "double buffer" hack: we need this for the glBufferData(.., NULL);glBufferData(.., vbo_pos_alloc_size); hack from nvidia to speed up vram transferts.
 		GLuint program;                     //!< The shaders (V,G,F) program used for drawing the selected lines for this batch.
 		GLuint zombie_program;              //!< The shaders (V,G,F) program used for drawing the zombie lines for this batch.
-		GLuint vbo_pos_alloc_size; // hack
 	};
 	Picviz::PVView_p picviz_view;          //!< A pointer to the Picviz::PVView related to the lines.
 	PVView          *view;                 //!<
@@ -61,14 +64,14 @@ class LibGLDecl PVLines {
 	int    fbo_width;    //!< The width of the PVGL view fbo (the width of the window plus a percentage), in pixel.
 	int	   fbo_height;   //!< The height of the PVGL view fbo (the height of the window plus a percentage), in pixel.
 
-	vec2   offset; //!<
+	vec2   offset; //!< offset between the fbo and the display.
 	/**
 	 *
 	 */
 	void   init_main_fbo();
 
 	// Selected lines FBO
-	bool   lines_fbo_dirty; //!<
+	bool   lines_fbo_dirty; //!< Indicator: toggled to true when some selected lines are to be redrawn in their fbo.
 	GLuint lines_fbo;       //!<
 	GLuint lines_fbo_tex;   //!<
 	/**
@@ -156,7 +159,7 @@ public:
 	/**
 	 *
 	 */
-	//void set_unselected_fbo_dirty();
+	void set_lines_fbo_dirty();
 
 	/**
 	 *

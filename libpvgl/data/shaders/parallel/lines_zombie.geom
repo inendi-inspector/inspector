@@ -9,7 +9,7 @@ layout(line_strip, max_vertices = coordinates) out;
 
 uniform mat4 view;
 uniform vec2 zoom = vec2(1.0, 1.0);
-uniform float batch;
+uniform float index_axe;
 uniform usamplerBuffer zombie_sampler;
 uniform int drawn_lines = 0;
 
@@ -32,18 +32,18 @@ void main (void)
 										vec4(0.0,0.0,0.0,1.0));
 for (int i = 0; i < coordinates / 4; i++)
   {
-  gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 0.0, position_g[0][i].x, 0.0, 1.0);
+  gl_Position = view2 * view * vec4 (index_axe+ 4.0 * float(i) + 0.0, position_g[0][i].x, 0.0, 1.0);
   EmitVertex();
-  gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 1.0, position_g[0][i].y, 0.0, 1.0);
+  gl_Position = view2 * view * vec4 (index_axe+ 4.0 * float(i) + 1.0, position_g[0][i].y, 0.0, 1.0);
   EmitVertex();
-  gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 2.0, position_g[0][i].z, 0.0, 1.0);
+  gl_Position = view2 * view * vec4 (index_axe+ 4.0 * float(i) + 2.0, position_g[0][i].z, 0.0, 1.0);
   EmitVertex();
-  gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 3.0, position_g[0][i].w, 0.0, 1.0);
+  gl_Position = view2 * view * vec4 (index_axe+ 4.0 * float(i) + 3.0, position_g[0][i].w, 0.0, 1.0);
   EmitVertex();
   }
 for (int i = 0; i < coordinates % 4; i++)
   {
-  gl_Position = view2 * view * vec4 (55.0 * batch + float(4 * (tab_size-1) + i), position_g[0][tab_size-1][i], 0.0, 1.0);
+  gl_Position = view2 * view * vec4 (index_axe+ float(4 * (tab_size-1) + i), position_g[0][tab_size-1][i], 0.0, 1.0);
   EmitVertex();
   }
 EndPrimitive();

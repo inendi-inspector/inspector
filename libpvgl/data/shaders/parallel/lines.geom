@@ -9,7 +9,7 @@ layout(line_strip, max_vertices = coordinates) out;
 
 uniform mat4 view;
 uniform vec2 zoom = vec2(1.0, 1.0);
-uniform float batch;
+uniform float index_axe;
 uniform int   eventline_first = 0;
 uniform int   eventline_current = 1;
 uniform int   drawn_lines = 0;
@@ -37,18 +37,18 @@ void main (void)
 	color = color_g[0];
 	for (int i = 0; i < coordinates / 4; i++)
 	{
-		gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 0.0, position_g[0][i].x, zla_g[0].x, 1.0);
+		gl_Position = view2 * view * vec4 (index_axe + 4.0 * float(i) + 0.0, position_g[0][i].x, zla_g[0].x, 1.0);
 		EmitVertex();
-		gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 1.0, position_g[0][i].y, zla_g[0].x, 1.0);
+		gl_Position = view2 * view * vec4 (index_axe + 4.0 * float(i) + 1.0, position_g[0][i].y, zla_g[0].x, 1.0);
 		EmitVertex();
-		gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 2.0, position_g[0][i].z, zla_g[0].x, 1.0);
+		gl_Position = view2 * view * vec4 (index_axe + 4.0 * float(i) + 2.0, position_g[0][i].z, zla_g[0].x, 1.0);
 		EmitVertex();
-		gl_Position = view2 * view * vec4 (55.0 * batch + 4.0 * float(i) + 3.0, position_g[0][i].w, zla_g[0].x, 1.0);
+		gl_Position = view2 * view * vec4 (index_axe + 4.0 * float(i) + 3.0, position_g[0][i].w, zla_g[0].x, 1.0);
 		EmitVertex();
 	}
 	for (int i = 0; i < coordinates % 4; i++)
 	{
-		gl_Position = view2 * view * vec4 (55.0 * batch + float(4 * (tab_size-1) + i), position_g[0][tab_size-1][i], zla_g[0].x, 1.0);
+		gl_Position = view2 * view * vec4 (index_axe + float(4 * (tab_size-1) + i), position_g[0][tab_size-1][i], zla_g[0].x, 1.0);
 		EmitVertex();
 	}
 	EndPrimitive();
