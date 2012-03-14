@@ -181,7 +181,7 @@ void PVGL::PVLines::move_offset(const vec2 &delta)
 
 /******************************************************************************
  *
- * PVGL::PVLines::move_offset
+ * PVGL::PVLines::set_size
  *
  *****************************************************************************/
 void PVGL::PVLines::set_size(int width, int height)
@@ -975,10 +975,11 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
 		//map.set_lines_fbo_dirty();
 		set_zombie_fbo_dirty();
 		//map.set_zombie_fbo_dirty();
-		//reset_offset();
+		reset_offset();
 	} else {
 		if (new_axis_min < axis_min) {
-			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the left (from %d to %d)\n", axis_min - new_axis_min, new_axis_min, axis_min);
+			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the left (from %d to %d) offset: (%f, %f), zo: (%f, %f), lo: (%f, %f)\n",
+				   	axis_min - new_axis_min, new_axis_min, axis_min, offset.x, offset.y, zombie_offset.x, zombie_offset.y, lines_offset.x, lines_offset.y);
 			we_are_redrawing = true;
 			fbo_index = 1 - fbo_index;
 			// Copying the current zombie frame buffer to the spare zombie framebuffer (we could use the same spare fbo, not to waste memory)
@@ -988,12 +989,17 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
             glClear(GL_COLOR_BUFFER_BIT);                                        PRINT_OPENGL_ERROR();
 			//glBlitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 			if (offset.y > 0) {
-				glBlitFramebuffer(0, 0, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT - offset.y, offset.x, offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						0, 0, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT - offset.y,
+					   	offset.x, offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			} else {
-				glBlitFramebuffer(0, -offset.y, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT, offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT + offset.y, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+					   	0, -offset.y, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT,
+						offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT + offset.y,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			}
 
-			// Copying back the spare zombie frame buffer to the current zombie framebuffer (note: we could probably optimize this by swapping _fbo handles)
 			// Draw all the zombie lines between new_axis_min and axis_min in the zombie fbo (no idle manager for now, I'm ont even sure it can be done)
 			// Do the same for the real lines.
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lines_fbo[fbo_index]);        PRINT_OPENGL_ERROR();
@@ -1001,9 +1007,15 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
             glClearColor(0.0, 1.0, 0.0, 0.0);                                    PRINT_OPENGL_ERROR();
             glClear(GL_COLOR_BUFFER_BIT);                                        PRINT_OPENGL_ERROR();
 			if (offset.y > 0) {
-				glBlitFramebuffer(0, 0, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT - offset.y, offset.x, offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						0, 0, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT - offset.y,
+					   	offset.x, offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			} else {
-				glBlitFramebuffer(0, -offset.y, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT, offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT + offset.y, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+					   	0, -offset.y, FBO_MAX_WIDTH - offset.x, FBO_MAX_HEIGHT,
+						offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT + offset.y,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			}
 			// zombie and line fbo are known to be undirty, but the main fbo is known to be dirty.
 			set_main_fbo_dirty();
@@ -1011,7 +1023,8 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
 			reset_offset();
 		}
 		if (new_axis_max > axis_max) {
-			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the right (from %d to %d)\n", new_axis_max - axis_max, axis_max, new_axis_max);
+			PVLOG_INFO("PVGL::PVLines::translate  We should redraw %d zones in the right (from %d to %d) offset: (%f, %f), zo: (%f, %f), lo: (%f, %f)\n",
+				   	new_axis_max - axis_max, axis_max, new_axis_max, offset.x, offset.y, zombie_offset.x, zombie_offset.y, lines_offset.x, lines_offset.y);
 			we_are_redrawing = true;
 			fbo_index = 1 - fbo_index;
 			// Copying the current zombie frame buffer to the spare zombie framebuffer (we could use the same spare fbo, not to waste memory)
@@ -1021,9 +1034,15 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
             glClear(GL_COLOR_BUFFER_BIT);                                        PRINT_OPENGL_ERROR();
 			//glBlitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 			if (offset.y > 0) {
-				glBlitFramebuffer(-offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT - offset.y, 0, offset.y, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						-offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT - offset.y,
+					   	0, offset.y, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			} else {
-				glBlitFramebuffer(-offset.x, -offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0, 0, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT + offset.y, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						-offset.x, -offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT,
+					   	0, 0, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT + offset.y,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 			}
 			// Copying back the spare zombie frame buffer to the current zombie framebuffer (note: we could probably optimize this by swapping _fbo handles)
 			// Draw all the zombie lines between new_axis_min and axis_min in the zombie fbo (no idle manager for now, I'm ont even sure it can be done)
@@ -1033,10 +1052,16 @@ void PVGL::PVLines::translate(int /*dx*/, int dy)
             glClearColor(0.0, 1.0, 0.0, 0.0);                                    PRINT_OPENGL_ERROR();
             glClear(GL_COLOR_BUFFER_BIT);                                        PRINT_OPENGL_ERROR();
 			if (offset.y > 0) {
-				glBlitFramebuffer(-offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT - offset.y, 0, offset.y, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						-offset.x, 0, FBO_MAX_WIDTH, FBO_MAX_HEIGHT - offset.y,
+					   	0, offset.y, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 				PVLOG_INFO("PVGL::PVLines::translate: prout\n");
 			} else {
-				glBlitFramebuffer(-offset.x, -offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT, 0, 0, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT + offset.y, GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
+				glBlitFramebuffer(
+						-offset.x, -offset.y, FBO_MAX_WIDTH, FBO_MAX_HEIGHT,
+					   	0, 0, FBO_MAX_WIDTH + offset.x, FBO_MAX_HEIGHT + offset.y,
+					   	GL_COLOR_BUFFER_BIT, GL_NEAREST); PRINT_OPENGL_ERROR();
 				PVLOG_INFO("PVGL::PVLines::translate: pouet\n");
 			}
 			// zombie and line fbo are known to be undirty, but the main fbo is known to be dirty.
