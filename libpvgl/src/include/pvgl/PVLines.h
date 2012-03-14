@@ -52,7 +52,10 @@ class LibGLDecl PVLines {
 
 	std::vector<Batch>  batches;        //!<
 	unsigned            nb_batches;     //!<
-	int                 drawn_lines;    //!<
+//	int                 drawn_lines;    //!<
+
+	// our transient batch, used to redraw incomplete lines
+	Batch transient_batch;
 
 	// FBO stuff
 	bool   main_fbo_dirty;    //!< A flag indicating if we should redraw the fbo content.
@@ -93,7 +96,7 @@ class LibGLDecl PVLines {
 	GLuint tbo_zombie;         //!< The Texture buffer object containing the currently zombie/unzombie lines selection (the one from the "layer stack output" layer).
 	GLuint tbo_zombie_texture; //!< The texture object attached to the #tbo_zombie.
 	GLuint zombie_fbo_program; //!<
-	int    drawn_zombie_lines; //!<
+	int    drawn_zombie_lines; //!< FIXME! should use the one from the task.
 	/**
 	 *
 	 */
@@ -112,6 +115,8 @@ class LibGLDecl PVLines {
 	void draw_selected_lines(GLfloat modelview[16]);
 
 	void free_buffers();
+
+	void init_transient_batch();
 
 public:
 	/**

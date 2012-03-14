@@ -47,7 +47,6 @@ PVGL::PVLines::PVLines(PVView *view_) : view(view_)
 	PVLOG_DEBUG("PVGL::PVLines::%s\n", __FUNCTION__);
 
 	reset_offset();
-	drawn_lines = 0;
 	drawn_zombie_lines = 0;
 
 	vbo_color = 0;
@@ -70,6 +69,13 @@ PVGL::PVLines::PVLines(PVView *view_) : view(view_)
 
 	we_are_redrawing = false;
 	fbo_index = 0;
+
+	// init of the transient batch;
+	transient_batch.vao = 0;
+	transient_batch.vbo_position = 0;
+	transient_batch.vbo_pos_alloc_size = 0;
+	transient_batch.program = 0;
+	transient_batch.zombie_program = 0;
 }
 
 /******************************************************************************
@@ -151,6 +157,7 @@ void PVGL::PVLines::free_buffers()
 		glDeleteBuffers(1, &batch.vbo_position);
 	}
 	batches.clear();
+	// FIXME: free the transient batch stuff.
 }
 
 /******************************************************************************
@@ -233,14 +240,14 @@ void PVGL::PVLines::create_batches()
 		}
 		nb_vec4 = (nb_axes_in_batch + 3) / 4;
 
-		glGenVertexArrays(1, &batch.vao); PRINT_OPENGL_ERROR();
-		glBindVertexArray(batch.vao); PRINT_OPENGL_ERROR();
+		glGenVertexArrays(1, &batch.vao);                                            PRINT_OPENGL_ERROR();
+		glBindVertexArray(batch.vao);                                                PRINT_OPENGL_ERROR();
 
 		// The VBO holding the line colors.
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_color);
-		glEnableVertexAttribArray(0); PRINT_OPENGL_ERROR();
-		glVertexAttribPointer(0, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, BUFFER_OFFSET(0));
-		attributes.push_back("color_v"); PRINT_OPENGL_ERROR();
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_color);                                    PRINT_OPENGL_ERROR();
+		glEnableVertexAttribArray(0);                                                PRINT_OPENGL_ERROR();
+		glVertexAttribPointer(0, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, BUFFER_OFFSET(0)); PRINT_OPENGL_ERROR();
+		attributes.push_back("color_v");                                             PRINT_OPENGL_ERROR();
 
 		// The VBO holding the line depth.
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_zla);
@@ -329,9 +336,23 @@ void PVGL::PVLines::init(Picviz::PVView_p pv_view_)
 	init_lines_fbo();
 	init_zombie_fbo();
 
+	// Init the transient batch
+	init_transient_batch();
+
 	// Restore a sane state.
 	glBindVertexArray(0);                                                                     PRINT_OPENGL_ERROR();
 	glUseProgram(0);                                                                          PRINT_OPENGL_ERROR();
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVLines::init_transient_batch
+ *
+ *****************************************************************************/
+void PVGL::PVLines::init_transient_batch()
+{
+  glGenVertexArrays(1, &transient_batch.vao);        PRINT_OPENGL_ERROR();
+  glGenBuffers(1, &transient_batch.vbo_position);    PRINT_OPENGL_ERROR();
 }
 
 /******************************************************************************
@@ -504,9 +525,12 @@ void PVGL::PVLines::set_lines_fbo_dirty()
 		return;
 	}
 	lines_fbo_dirty = true;
-	drawn_lines = 0;
+	glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo[fbo_index]); PRINT_OPENGL_ERROR();
+	glClearColor(0.0, 1.0, 1.0, 0.0);                    PRINT_OPENGL_ERROR();
+	glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT);    PRINT_OPENGL_ERROR();
 	// We have to redraw all the lines between all axes.
-	idle_manager.new_task(view, IDLE_REDRAW_LINES, 0, picviz_view->get_axes_count());
+	idle_manager.new_task(view, IDLE_REDRAW_LINES, 0, picviz_view->get_axes_count()/ 2);
+	idle_manager.new_task(view, IDLE_REDRAW_LINES, picviz_view->get_axes_count() / 2, picviz_view->get_axes_count());
 	set_main_fbo_dirty();
 }
 
@@ -525,7 +549,8 @@ void PVGL::PVLines::set_zombie_fbo_dirty()
 	zombie_fbo_dirty = true;
 	drawn_zombie_lines = 0;
 	// We have to redraw all the zombie/unselected lines between all axes.
-	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES, 0, picviz_view->get_axes_count());
+	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES, 0, picviz_view->get_axes_count() / 2);
+	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES, picviz_view->get_axes_count() / 2, picviz_view->get_axes_count());
 	set_main_fbo_dirty();
 }
 
@@ -615,10 +640,10 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
 	PVGL::PVIdleManager::IdleTask task;
 
 	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo[fbo_index]); PRINT_OPENGL_ERROR();
-	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
+	glViewport(0, 0, fbo_width, fbo_height);                  PRINT_OPENGL_ERROR();
 	if (drawn_zombie_lines == 0) {
-		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
-		glClear(GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
+		glClearColor(0.0, 0.0, 0.0, 0.0);                     PRINT_OPENGL_ERROR();
+		glClear(GL_COLOR_BUFFER_BIT);                         PRINT_OPENGL_ERROR();
 	}
 	if (nb_lines_to_draw == 0) {
 		return;
@@ -683,44 +708,122 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 		return;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, lines_fbo[fbo_index]); PRINT_OPENGL_ERROR();
-	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
-	if (drawn_lines == 0) {
-		glClearColor(0.0, 0.0, 0.0, 0.0); PRINT_OPENGL_ERROR();
-		glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
-		// copy the "other" line fbo into a part of this one, if needed (we have an offset somewhere see **).
-	}
+	glViewport(0, 0, fbo_width, fbo_height);                 PRINT_OPENGL_ERROR();
 	if (!idle_manager.get_first_task(view, IDLE_REDRAW_LINES, task)) {
 		return;
 	}
+	int drawn_lines = idle_manager.get_drawn_lines(task);
+/*	if (drawn_lines == 0) {
+		glClearColor(0.0, 0.0, 0.0, 0.0);                    PRINT_OPENGL_ERROR();
+		glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT);    PRINT_OPENGL_ERROR();
+		// copy the "other" line fbo into a part of this one, if needed (we have an offset somewhere see **).
+	}*/
 
-	// "Regular" task, drawing all axis, we have the task to test this if needed.
 	PVRow lines_count = picviz_min(nb_lines_to_draw, PVRow(picviz_view->get_row_count() - drawn_lines));
+	// "Regular" task, drawing all axis, we have the task to test this if needed.
 	fill_vbo_colors_and_zla(drawn_lines, lines_count);
-	for (unsigned int i = 0; i < nb_batches; i++) {
-		glUseProgram(batches[i].program); PRINT_OPENGL_ERROR();
-		glUniform2f(get_uni_loc(batches[i].program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
-		glUniformMatrix4fv(get_uni_loc(batches[i].program, "view"), 1, GL_FALSE, modelview); PRINT_OPENGL_ERROR ();
-		glUniform1i(get_uni_loc(batches[i].program, "eventline_first"), picviz_view->eventline.get_first_index()); PRINT_OPENGL_ERROR();
-		glUniform1i(get_uni_loc(batches[i].program, "eventline_current"), picviz_view->eventline.get_current_index()); PRINT_OPENGL_ERROR();
-		glUniform1i(get_uni_loc(batches[i].program, "drawn_lines"), drawn_lines);
-		glBindVertexArray(batches[i].vao); PRINT_OPENGL_ERROR();
-		fill_vbo_positions(i, drawn_lines, lines_count);
+	if (task.get_first_axis() == 0 && task.get_last_axis() == picviz_view->get_axes_count()) {
+		for (unsigned int i = 0; i < nb_batches; i++) {
+			glUseProgram(batches[i].program);                                                                              PRINT_OPENGL_ERROR();
+			glUniform2f(get_uni_loc(batches[i].program, "zoom"), fbo_width_factor, fbo_height_factor);                     PRINT_OPENGL_ERROR();
+			glUniformMatrix4fv(get_uni_loc(batches[i].program, "view"), 1, GL_FALSE, modelview);                           PRINT_OPENGL_ERROR();
+			glUniform1i(get_uni_loc(batches[i].program, "eventline_first"), picviz_view->eventline.get_first_index());     PRINT_OPENGL_ERROR();
+			glUniform1i(get_uni_loc(batches[i].program, "eventline_current"), picviz_view->eventline.get_current_index()); PRINT_OPENGL_ERROR();
+			glUniform1i(get_uni_loc(batches[i].program, "drawn_lines"), drawn_lines);                                      PRINT_OPENGL_ERROR();
+			glBindVertexArray(batches[i].vao);                                                                             PRINT_OPENGL_ERROR();
+			fill_vbo_positions(i, drawn_lines, lines_count);
 
-		// FIXME: this is probably overkill to do these 3 lines here, but I do have curious errors if I remove them.
-		glActiveTexture(GL_TEXTURE1); PRINT_OPENGL_ERROR();
-		glBindTexture(GL_TEXTURE_BUFFER, tbo_selection_texture); PRINT_OPENGL_ERROR();
-		glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_selection); PRINT_OPENGL_ERROR();
+			// FIXME: this is probably overkill to do these 3 lines here, but I do have curious errors if I remove them.
+			glActiveTexture(GL_TEXTURE1);                                                                                  PRINT_OPENGL_ERROR();
+			glBindTexture(GL_TEXTURE_BUFFER, tbo_selection_texture);                                                       PRINT_OPENGL_ERROR();
+			glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_selection);                                                       PRINT_OPENGL_ERROR();
+			glDrawArrays(GL_POINTS, 0, lines_count);                                                                       PRINT_OPENGL_ERROR();
+		}
+	} else {
+		int first = task.get_first_axis();
+		int last = task.get_last_axis();
+		int nb_batchs = (last - first) / 55;
+		PVLOG_INFO("PVGL::PVLines::%s: nb full (55 axes) batches: %d, nb_axes last batch: %d\n", __FUNCTION__, nb_batchs, last - first - nb_batchs * 55);
 
-		glDrawArrays(GL_POINTS, 0, lines_count);
+		// We are going to use the universal transient batch!
+		const char *str_attributes[] = { "color_v", "zla_v",
+			"position_v[0]", "position_v[1]", "position_v[2]", "position_v[3]",
+			"position_v[4]", "position_v[5]", "position_v[6]", "position_v[7]",
+			"position_v[8]", "position_v[9]", "position_v[10]", "position_v[11]",
+			"position_v[12]", "position_v[13]" };
+		std::vector<std::string> attributes(str_attributes, str_attributes + 15);
+		glBindVertexArray(transient_batch.vao); PRINT_OPENGL_ERROR();
+
+		// colors
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_color);                                    PRINT_OPENGL_ERROR();
+		glEnableVertexAttribArray(0);                                                PRINT_OPENGL_ERROR();
+		glVertexAttribPointer(0, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, BUFFER_OFFSET(0)); PRINT_OPENGL_ERROR();
+		// line depth
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_zla);                                      PRINT_OPENGL_ERROR();
+		glEnableVertexAttribArray(1);                                                PRINT_OPENGL_ERROR();
+		glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(0));        PRINT_OPENGL_ERROR();
+
+		glBindBuffer(GL_ARRAY_BUFFER, transient_batch.vbo_position);                 PRINT_OPENGL_ERROR();
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * 14 * lines_count, 0, GL_DYNAMIC_DRAW); PRINT_OPENGL_ERROR();
+		const float *plotted_array = picviz_view->get_plotted_parent()->get_table_pointer();
+		PVCol        col_size      = picviz_view->get_original_axes_count();
+		// first, the full batches, if any.
+
+		// creating the shaders program.
+		std::string prefix =
+			"#version 330\n\n"
+			"#define coordinates 56\n"
+			"#define tab_size 14\n"
+			"#define NB_AXES_PER_BATCH 56.0\n";
+		GLuint program = read_shader("parallel/lines.vert", "parallel/lines.geom", "parallel/lines.frag",
+				prefix, prefix, "", attributes);
+		glUseProgram(program); PRINT_OPENGL_ERROR();
+		glUniform1i(get_uni_loc(program, "selection_sampler"), 1);
+		for	(int i = 0; i < 14; i++) {
+			glEnableVertexAttribArray(i + 2); PRINT_OPENGL_ERROR();
+			glVertexAttribPointer(i + 2, 4, GL_FLOAT, GL_FALSE, 14 * sizeof(vec4), BUFFER_OFFSET(i * sizeof(vec4))); PRINT_OPENGL_ERROR();
+		}
+		for (int batch_index = 0; batch_index < nb_batchs; batch_index++) {
+			glUniform1f(get_uni_loc(program, "index_axe"), first + batch_index * 55);
+			// Filling the position vbo
+			vec4 *buffer = reinterpret_cast<vec4*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
+			vec4 *dest = buffer;
+			for (PVRow i = drawn_lines; i < drawn_lines + lines_count; i++) {
+				const float *current_line = plotted_array + i * col_size;
+				for (int j = 0; j < 56; j+= 4) {
+					dest->x = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 0)];
+					dest->y = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 1)];
+					dest->z = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 2)];
+					dest->w = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 3)];
+					dest++;
+				}
+			}
+			glUnmapBuffer(GL_ARRAY_BUFFER); PRINT_OPENGL_ERROR();
+			glUniform2f(get_uni_loc(program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
+			glUniformMatrix4fv(get_uni_loc(program, "view"), 1, GL_FALSE, modelview); PRINT_OPENGL_ERROR ();
+			glUniform1i(get_uni_loc(program, "drawn_lines"), drawn_lines);
+			glUniform1i(get_uni_loc(program, "eventline_first"), picviz_view->eventline.get_first_index());     PRINT_OPENGL_ERROR();
+			glUniform1i(get_uni_loc(program, "eventline_current"), picviz_view->eventline.get_current_index()); PRINT_OPENGL_ERROR();
+
+			glActiveTexture(GL_TEXTURE2); PRINT_OPENGL_ERROR();
+			glBindTexture(GL_TEXTURE_BUFFER, tbo_zombie_texture); PRINT_OPENGL_ERROR();
+			glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_zombie); PRINT_OPENGL_ERROR();
+
+			glDrawArrays(GL_POINTS, 0, lines_count); PRINT_OPENGL_ERROR();
+		}
+		glDeleteProgram(program);
+		// then the last, incomplete batch. TODO
 	}
 	drawn_lines += nb_lines_to_draw;
 	if (drawn_lines >= int(picviz_view->get_row_count())) {
 		idle_manager.remove_task(task);
-		lines_fbo_dirty = false; // FIXME!
-		drawn_lines = 0; // FIXME too, well, we'll have to redo almost everything anyway.
+		if (!idle_manager.task_exists(view, IDLE_REDRAW_LINES)) {
+			lines_fbo_dirty = false;
+		}
+	} else {
+		idle_manager.set_drawn_lines(task, drawn_lines);
 	}
 	lines_offset = -offset;
-
 	//
 }
 

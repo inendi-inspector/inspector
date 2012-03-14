@@ -71,7 +71,7 @@ bool PVGL::PVIdleManager::task_exists(PVGL::PVDrawable *drawable, PVGL::PVIdleTa
 	// We're looking for a task with the same drawable and same kind, no matter the first and last axis.
 	std::map<IdleTask, IdleValue>::const_iterator it;
 	for (it = tasks.begin(); it != tasks.end(); ++it) {
-		if (it->first.get_drawable() == drawable && it->first.get_kind() == kind) {
+		if (it->first.get_drawable() == drawable && it->first.get_kind() == kind && it->second.removed == false) {
 			return true;
 		}
 	}
@@ -150,4 +150,42 @@ bool PVGL::PVIdleManager::get_first_task(PVGL::PVDrawable *drawable, PVGL::PVIdl
 	}
 
 	return false;
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVIdleManager::get_drawn_lines
+ *
+ *****************************************************************************/
+int PVGL::PVIdleManager::get_drawn_lines(PVGL::PVIdleManager::IdleTask &task) const
+{
+	std::map<IdleTask, IdleValue>::const_iterator it;
+	for (it = tasks.begin(); it != tasks.end(); ++it) {
+		if (it->first.get_drawable() == task.get_drawable() &&
+			   	it->first.get_kind() == task.get_kind() &&
+				it->first.get_first_axis() == task.get_first_axis() &&
+			   	it->first.get_last_axis() == task.get_last_axis()) {
+			return it->second.drawn_lines;
+		}
+	}
+
+	return 0;
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVIdleManager::set_drawn_lines
+ *
+ *****************************************************************************/
+void PVGL::PVIdleManager::set_drawn_lines(PVGL::PVIdleManager::IdleTask &task, int drawn_lines)
+{
+	std::map<IdleTask, IdleValue>::iterator it;
+	for (it = tasks.begin(); it != tasks.end(); ++it) {
+		if (it->first.get_drawable() == task.get_drawable() &&
+			   	it->first.get_kind() == task.get_kind() &&
+				it->first.get_first_axis() == task.get_first_axis() &&
+			   	it->first.get_last_axis() == task.get_last_axis()) {
+			it->second.drawn_lines = drawn_lines;
+		}
+	}
 }

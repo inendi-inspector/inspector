@@ -54,6 +54,14 @@ class LibGLDecl PVIdleManager {
 		 */
 		PVGL::PVIdleTaskKinds get_kind()const{return kind;}
 		/**
+		 *
+		 */
+		int get_first_axis()const{return first_axis;}
+		/**
+		 *
+		 */
+		int get_last_axis()const{return last_axis;}
+		/**
 		*
 		*/
 		bool operator==(const IdleTask&t)const
@@ -96,6 +104,8 @@ public:
 	 * @return         true if such a task has been found, false otherwise.
 	 */
 	bool get_first_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind, PVGL::PVIdleManager::IdleTask &task) const;
+	int get_drawn_lines(PVGL::PVIdleManager::IdleTask &task) const;
+	void set_drawn_lines(PVGL::PVIdleManager::IdleTask &task, int drawn_lines);
 	/**
 	*
 	* @param drawable
