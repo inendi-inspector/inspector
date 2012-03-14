@@ -27,22 +27,38 @@ enum PVIdleTaskKinds {
  *
  */
 class LibGLDecl PVIdleManager {
-
-	struct IdleTask {
+	public:
+	class IdleTask {
 		PVGL::PVDrawable      *drawable; //!<
 		PVGL::PVIdleTaskKinds  kind;     //!<
-
+		int                    first_axis;
+		int                    last_axis;
+		public:
+		/**
+		 * Default constructor.
+		 */
+		IdleTask():drawable(0),kind(IDLE_REDRAW_LINES),first_axis(-1),last_axis(-1) {}
 		/**
 		*  Constructor.
 		*/
-		IdleTask(PVGL::PVDrawable *drawable_, PVGL::PVIdleTaskKinds kind_):drawable(drawable_),kind(kind_){}
+		IdleTask(PVGL::PVDrawable *drawable_, PVGL::PVIdleTaskKinds kind_, int first_axis_, int last_axis_):drawable(drawable_),kind(kind_),first_axis(first_axis_),last_axis(last_axis_)
+		{
+		}
 
+		/**
+		 *
+		 */
+		PVGL::PVDrawable *get_drawable()const{return drawable;}
+		/**
+		 *
+		 */
+		PVGL::PVIdleTaskKinds get_kind()const{return kind;}
 		/**
 		*
 		*/
 		bool operator==(const IdleTask&t)const
 			{
-				return drawable == t.drawable && kind == t.kind;
+				return drawable == t.drawable && kind == t.kind && first_axis == t.first_axis && last_axis == t.last_axis;
 			}
 
 		/**
@@ -50,22 +66,36 @@ class LibGLDecl PVIdleManager {
 		*/
 		bool operator<(const IdleTask&t)const
 			{
-				if (drawable > t.drawable || (drawable == t.drawable && kind > t.kind)) {
+				if (drawable > t.drawable ||
+					   	(drawable == t.drawable && kind > t.kind) ||
+						(drawable == t.drawable && kind == t.kind && first_axis > t.first_axis) ||
+						(drawable == t.drawable && kind == t.kind && first_axis == t.first_axis && last_axis > t.last_axis)) {
 					return true;
 				}
 				return false;
 			}
 	};
-
+	private:
 	struct IdleValue {
 		int  nb_lines;  //!<
+		int  drawn_lines;
 		bool removed;   //!<
 		tbb::tick_count time_start;
-		IdleValue(int nb_lines_ = 25000, bool removed_ = false):nb_lines(nb_lines_),removed(removed_){ time_start = tbb::tick_count::now(); }
+		IdleValue(int nb_lines_ = 25000, bool removed_ = false):nb_lines(nb_lines_),removed(removed_){ time_start = tbb::tick_count::now(); drawn_lines = 0; }
 	};
 
 	std::map<IdleTask, IdleValue> tasks; //!<
 public:
+	/**
+	 * Get the first task of a given kind for the given drawable.
+	 *
+	 * @param drawable The drawable
+	 * @param kind     The kind...
+	 * @param task     A place-holder for the task.
+	 *
+	 * @return         true if such a task has been found, false otherwise.
+	 */
+	bool get_first_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind, PVGL::PVIdleManager::IdleTask &task) const;
 	/**
 	*
 	* @param drawable
@@ -84,7 +114,7 @@ public:
 	* @param drawable
 	* @param kind
 	*/
-	void new_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind);
+	void new_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind, int first, int last);
 
 	/**
 	*
@@ -96,11 +126,11 @@ public:
 	int get_number_of_lines(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind);
 
 	/**
+	* Remove a task.
 	*
-	* @param drawable
-	* @param kind
+	* @param task   The task to remove (to mark as removed, really).
 	*/
-	void remove_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind);
+	void remove_task(const PVGL::PVIdleManager::IdleTask &task);
 
 	/**
 	*

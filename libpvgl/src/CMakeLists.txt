@@ -29,7 +29,7 @@ PVLabel.cpp
 PVLayout.cpp
 PVLines.cpp
 PVMain.cpp
-PVMap.cpp
+#PVMap.cpp
 PVMisc.cpp
 views/PVParallel.cpp
 views/PVScatter.cpp
@@ -77,7 +77,7 @@ include/pvgl/PVLabel.h
 include/pvgl/PVLayout.h
 include/pvgl/PVLines.h
 include/pvgl/PVMain.h
-include/pvgl/PVMap.h
+#include/pvgl/PVMap.h
 include/pvgl/PVMisc.h
 include/pvgl/views/PVParallel.h
 include/pvgl/views/PVScatter.h

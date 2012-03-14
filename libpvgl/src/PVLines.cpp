@@ -505,7 +505,8 @@ void PVGL::PVLines::set_lines_fbo_dirty()
 	}
 	lines_fbo_dirty = true;
 	drawn_lines = 0;
-	idle_manager.new_task(view, IDLE_REDRAW_LINES);
+	// We have to redraw all the lines between all axes.
+	idle_manager.new_task(view, IDLE_REDRAW_LINES, 0, picviz_view->get_axes_count());
 	set_main_fbo_dirty();
 }
 
@@ -523,7 +524,8 @@ void PVGL::PVLines::set_zombie_fbo_dirty()
 	}
 	zombie_fbo_dirty = true;
 	drawn_zombie_lines = 0;
-	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES);
+	// We have to redraw all the zombie/unselected lines between all axes.
+	idle_manager.new_task(view, IDLE_REDRAW_ZOMBIE_LINES, 0, picviz_view->get_axes_count());
 	set_main_fbo_dirty();
 }
 
@@ -608,6 +610,10 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
 	if (!picviz_view->is_consistent()) {
 		return;
 	}
+
+
+	PVGL::PVIdleManager::IdleTask task;
+
 	glBindFramebuffer(GL_FRAMEBUFFER, zombie_fbo[fbo_index]); PRINT_OPENGL_ERROR();
 	glViewport(0, 0, fbo_width, fbo_height); PRINT_OPENGL_ERROR();
 	if (drawn_zombie_lines == 0) {
@@ -617,6 +623,12 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
 	if (nb_lines_to_draw == 0) {
 		return;
 	}
+	if (!idle_manager.get_first_task(view, IDLE_REDRAW_ZOMBIE_LINES, task)) {
+		return;
+	}
+
+    // We have a task, so we could use the "first" and "last" member if needed.
+
 	glEnable(GL_BLEND);
 	glBlendEquation(GL_MAX);
 	PVRow lines_count = picviz_min(nb_lines_to_draw, int(picviz_view->get_row_count() - drawn_zombie_lines));
@@ -643,9 +655,9 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
 	PVLOG_DEBUG("PVGL::PVLines::%s: %d zombie lines drawn.\n", __FUNCTION__, drawn_zombie_lines);
 
 	if (drawn_zombie_lines >= int(picviz_view->get_row_count())) {
-		idle_manager.remove_task(view, IDLE_REDRAW_ZOMBIE_LINES);
-		zombie_fbo_dirty = false;
-		drawn_zombie_lines = 0;
+		idle_manager.remove_task(task);
+		zombie_fbo_dirty = false; // FIXME! this would only be true if it were the last task
+		drawn_zombie_lines = 0; // FIXME! this is bogus too, this field should be in the task itself, or at least related to.
 	}
 	zombie_offset = -offset;
 }
@@ -657,6 +669,7 @@ void PVGL::PVLines::draw_zombie_lines(GLfloat modelview[16])
  *****************************************************************************/
 void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 {
+	PVGL::PVIdleManager::IdleTask task;
 	int nb_lines_to_draw = idle_manager.get_number_of_lines(view, IDLE_REDRAW_LINES);
 
 	// (**) test and see if we have a translation offset to handle (with some lines to redraw).
@@ -676,8 +689,11 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 		glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT); PRINT_OPENGL_ERROR();
 		// copy the "other" line fbo into a part of this one, if needed (we have an offset somewhere see **).
 	}
+	if (!idle_manager.get_first_task(view, IDLE_REDRAW_LINES, task)) {
+		return;
+	}
 
-	// "Regular" task, drawing all axis
+	// "Regular" task, drawing all axis, we have the task to test this if needed.
 	PVRow lines_count = picviz_min(nb_lines_to_draw, PVRow(picviz_view->get_row_count() - drawn_lines));
 	fill_vbo_colors_and_zla(drawn_lines, lines_count);
 	for (unsigned int i = 0; i < nb_batches; i++) {
@@ -699,9 +715,9 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 	}
 	drawn_lines += nb_lines_to_draw;
 	if (drawn_lines >= int(picviz_view->get_row_count())) {
-		idle_manager.remove_task(view, IDLE_REDRAW_LINES);
-		lines_fbo_dirty = false;
-		drawn_lines = 0;
+		idle_manager.remove_task(task);
+		lines_fbo_dirty = false; // FIXME!
+		drawn_lines = 0; // FIXME too, well, we'll have to redo almost everything anyway.
 	}
 	lines_offset = -offset;
 

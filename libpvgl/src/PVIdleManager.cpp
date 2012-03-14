@@ -25,7 +25,7 @@ void PVGL::PVIdleManager::callback(void)
 	PVLOG_HEAVYDEBUG("PVGL::PVIdleManager::%s\n", __FUNCTION__);
 
 	for (it = tasks.begin(); it != tasks.end(); ++it) {
-		PVDrawable* d = it->first.drawable;
+		PVDrawable* d = it->first.get_drawable();
 		PVGL::wtk_set_current_window(d->get_window_id());
 		d->draw();
 		PVGL::wtk_buffers_swap();
@@ -51,9 +51,9 @@ void PVGL::PVIdleManager::callback(void)
  * PVGL::PVIdleManager::new_task
  *
  *****************************************************************************/
-void PVGL::PVIdleManager::new_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind)
+void PVGL::PVIdleManager::new_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind, int first, int last)
 {
-	IdleTask task(drawable, kind);
+	IdleTask task(drawable, kind, first, last);
 
 	PVLOG_DEBUG("PVGL::PVIdleManager::%s\n", __FUNCTION__);
 
@@ -68,8 +68,12 @@ void PVGL::PVIdleManager::new_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskK
  *****************************************************************************/
 bool PVGL::PVIdleManager::task_exists(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind) const
 {
-	if (tasks.find(IdleTask(drawable, kind)) != tasks.end()) {
-		return true;
+	// We're looking for a task with the same drawable and same kind, no matter the first and last axis.
+	std::map<IdleTask, IdleValue>::const_iterator it;
+	for (it = tasks.begin(); it != tasks.end(); ++it) {
+		if (it->first.get_drawable() == drawable && it->first.get_kind() == kind) {
+			return true;
+		}
 	}
 	return false;
 }
@@ -94,10 +98,8 @@ int PVGL::PVIdleManager::get_number_of_lines(PVGL::PVDrawable *drawable, PVGL::P
  * PVGL::PVIdleManager::remove_task
  *
  *****************************************************************************/
-void PVGL::PVIdleManager::remove_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind)
+void PVGL::PVIdleManager::remove_task(const PVGL::PVIdleManager::IdleTask &task)
 {
-	IdleTask task(drawable, kind);
-
 	PVLOG_DEBUG("PVGL::PVIdleManager::%s\n", __FUNCTION__);
 
 	if (tasks.find(task) == tasks.end()) {
@@ -124,10 +126,28 @@ void PVGL::PVIdleManager::remove_tasks_for_drawable(PVGL::PVDrawable *drawable)
 	while (it != tasks.end()) {
 		std::map<IdleTask, IdleValue>::iterator it_next = it;
 		it_next++;
-		if ((*it).first.drawable == drawable) {
+		if ((*it).first.get_drawable() == drawable) {
 			PVLOG_DEBUG("PVGL::PVIdleManager::%s Removing a task for a given drawable.\n", __FUNCTION__);
 			tasks.erase(it);
 		}
 		it = it_next;
 	}
+}
+
+/******************************************************************************
+ *
+ * PVGL::PVIdleManager::get_first_task
+ *
+ *****************************************************************************/
+bool PVGL::PVIdleManager::get_first_task(PVGL::PVDrawable *drawable, PVGL::PVIdleTaskKinds kind, PVGL::PVIdleManager::IdleTask &task) const
+{
+	std::map<IdleTask, IdleValue>::const_iterator it;
+	for (it = tasks.begin(); it != tasks.end(); ++it) {
+		if (it->first.get_drawable() == drawable && it->first.get_kind() == kind) {
+			task = it->first;
+			return true;
+		}
+	}
+
+	return false;
 }

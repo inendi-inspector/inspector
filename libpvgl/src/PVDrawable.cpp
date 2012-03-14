@@ -87,9 +87,9 @@ int PVGL::PVDrawable::small_files_scheduler(PVGL::PVIdleTaskKinds kind)
  *****************************************************************************/
 PVGL::PVDrawable::PVDrawable(int win_id, PVSDK::PVMessenger *message) :
 		pv_message(message),
-		widget_manager(0), index(0),
-		window_id(win_id),
-		frame_count(0)
+		widget_manager(0),
+		frame_count(0), index(0),
+		window_id(win_id)
 {
 	fps_previous_time = glutGet(GLUT_ELAPSED_TIME);
 	// Default width and height needs to be set, or we will use an undefined value
@@ -115,7 +115,7 @@ void PVGL::PVDrawable::init(Picviz::PVView_p view)
 	PVLOG_HEAVYDEBUG("PVGL::PVDrawable::%s\n", __FUNCTION__);
 	picviz_view = view;
 
-	int max_lines_for_scheduler_small = pvconfig.value("pvgl/max_lines_for_scheduler_small", 80000).toInt();
+	PVRow max_lines_for_scheduler_small = pvconfig.value("pvgl/max_lines_for_scheduler_small", 80000).toInt();
 
 	if (picviz_view->get_row_count() < max_lines_for_scheduler_small) {
 		current_scheduler = &PVGL::PVDrawable::small_files_scheduler;
