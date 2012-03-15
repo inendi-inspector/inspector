@@ -713,15 +713,10 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 		return;
 	}
 	int drawn_lines = idle_manager.get_drawn_lines(task);
-/*	if (drawn_lines == 0) {
-		glClearColor(0.0, 0.0, 0.0, 0.0);                    PRINT_OPENGL_ERROR();
-		glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT);    PRINT_OPENGL_ERROR();
-		// copy the "other" line fbo into a part of this one, if needed (we have an offset somewhere see **).
-	}*/
 
 	PVRow lines_count = picviz_min(nb_lines_to_draw, PVRow(picviz_view->get_row_count() - drawn_lines));
-	// "Regular" task, drawing all axis, we have the task to test this if needed.
 	fill_vbo_colors_and_zla(drawn_lines, lines_count);
+	// "Regular" task, drawing all axis, we have the task to test this if needed.
 	if (task.get_first_axis() == 0 && task.get_last_axis() == picviz_view->get_axes_count()) {
 		for (unsigned int i = 0; i < nb_batches; i++) {
 			glUseProgram(batches[i].program);                                                                              PRINT_OPENGL_ERROR();
@@ -783,7 +778,8 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 			glEnableVertexAttribArray(i + 2); PRINT_OPENGL_ERROR();
 			glVertexAttribPointer(i + 2, 4, GL_FLOAT, GL_FALSE, 14 * sizeof(vec4), BUFFER_OFFSET(i * sizeof(vec4))); PRINT_OPENGL_ERROR();
 		}
-		for (int batch_index = 0; batch_index < nb_batchs; batch_index++) {
+		int batch_index;
+		for (batch_index = 0; batch_index < nb_batchs; batch_index++) {
 			glUniform1f(get_uni_loc(program, "index_axe"), first + batch_index * 55);
 			// Filling the position vbo
 			vec4 *buffer = reinterpret_cast<vec4*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
@@ -812,7 +808,63 @@ void PVGL::PVLines::draw_selected_lines(GLfloat modelview[16])
 			glDrawArrays(GL_POINTS, 0, lines_count); PRINT_OPENGL_ERROR();
 		}
 		glDeleteProgram(program);
-		// then the last, incomplete batch. TODO
+		// then the last, incomplete batch.
+		first += nb_batchs * 55;
+		int nb_axes_in_batch = last - first;
+		int nb_vec4 = (nb_axes_in_batch + 3) / 4;
+
+		// creating the shaders program.
+		std::stringstream prefix_stream;
+		prefix_stream <<	"#version 330\n\n"
+			"#define coordinates " << nb_axes_in_batch << "\n"
+			"#define tab_size " << nb_vec4 << "\n"
+			"#define NB_AXES_PER_BATCH 56.0\n";
+		attributes.clear();
+		attributes = std::vector<std::string>(str_attributes, str_attributes + 2 + nb_vec4);
+		for (unsigned i = 0; i < attributes.size(); i++)
+			PVLOG_INFO("PVGL::PVLines::%s: attributes[%d] = %s\n", __FUNCTION__, i, attributes[i].c_str());
+		program = read_shader("parallel/lines.vert", "parallel/lines.geom", "parallel/lines.frag",
+				prefix_stream.str(), prefix_stream.str(), "", attributes);
+		glUseProgram(program); PRINT_OPENGL_ERROR();
+		glUniform1i(get_uni_loc(program, "selection_sampler"), 1); PRINT_OPENGL_ERROR();
+		for	(int i = 0; i < nb_vec4; i++) {
+			glEnableVertexAttribArray(i + 2); PRINT_OPENGL_ERROR();
+			glVertexAttribPointer(i + 2, 4, GL_FLOAT, GL_FALSE, nb_vec4 * sizeof(vec4), BUFFER_OFFSET(i * sizeof(vec4))); PRINT_OPENGL_ERROR();
+		}
+		for (int i = nb_vec4; i < 14; i++) {
+			glDisableVertexAttribArray(i + 2); PRINT_OPENGL_ERROR();
+		}
+		glUniform1f(get_uni_loc(program, "index_axe"), first);
+		// Filling the position vbo
+		vec4 *buffer = reinterpret_cast<vec4*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
+		vec4 *dest = buffer;
+		for (PVRow i = drawn_lines; i < drawn_lines + lines_count; i++) {
+			const float *current_line = plotted_array + i * col_size;
+			for (int j = 0; j < nb_vec4 * 4; j+= 4) {
+				dest->x = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 0)];
+				if (j + 1 < nb_axes_in_batch)
+					dest->y = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 1)];
+				if (j + 2 < nb_axes_in_batch)
+					dest->z = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 2)];
+				if (j + 3 < nb_axes_in_batch)
+					dest->w = current_line[picviz_view->axes_combination.get_axis_column_index_fast(first + j + 3)];
+				dest++;
+			}
+		}
+		glUnmapBuffer(GL_ARRAY_BUFFER); PRINT_OPENGL_ERROR();
+		glUniform2f(get_uni_loc(program, "zoom"), fbo_width_factor, fbo_height_factor); PRINT_OPENGL_ERROR();
+		glUniformMatrix4fv(get_uni_loc(program, "view"), 1, GL_FALSE, modelview); PRINT_OPENGL_ERROR ();
+		glUniform1i(get_uni_loc(program, "drawn_lines"), drawn_lines);
+		glUniform1i(get_uni_loc(program, "eventline_first"), picviz_view->eventline.get_first_index());     PRINT_OPENGL_ERROR();
+		glUniform1i(get_uni_loc(program, "eventline_current"), picviz_view->eventline.get_current_index()); PRINT_OPENGL_ERROR();
+
+		glActiveTexture(GL_TEXTURE2); PRINT_OPENGL_ERROR();
+		glBindTexture(GL_TEXTURE_BUFFER, tbo_zombie_texture); PRINT_OPENGL_ERROR();
+		glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, tbo_zombie); PRINT_OPENGL_ERROR();
+
+		glDrawArrays(GL_POINTS, 0, lines_count); PRINT_OPENGL_ERROR();
+
+		glDeleteProgram(program);
 	}
 	drawn_lines += nb_lines_to_draw;
 	if (drawn_lines >= int(picviz_view->get_row_count())) {
